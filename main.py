@@ -8,7 +8,7 @@ BOT_TOKEN = '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ'
 # هذا الـ ID مالتك حتى البوت يعرف انت المدير
 # لازم تغير هذا الرقم بالـ ID الحقيقي مالتك!
 # حتى تعرف الـ ID مالتك، ادخل لاي بوت يسويلك هاي الخدمة مثل @userinfobot
-ADMIN_ID = 123456789 # غير هذا الرقم بالـ ID الحقيقي مالتك
+ADMIN_ID = 7032076289 # غير هذا الرقم بالـ ID الحقيقي مالتك
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
