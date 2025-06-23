@@ -10,39 +10,47 @@ suppliers_data = []
 shops_data = []
 
 # دالة لتحميل البيانات من الملف
-def load_data():
-    global suppliers_data, shops_data
+def load_data(): # تم تغيير الاسم هنا من load_data_from_file
+    global suppliers_data, shops_data # نعلن إننا سنعدل على المتغيرات العالمية
+    
+    logging.info(f"محاولة تحميل البيانات من {DATA_FILE}...")
     if os.path.exists(DATA_FILE): # إذا الملف موجود
         try:
             with open(DATA_FILE, 'r', encoding='utf-8') as f: # نفتح الملف للقراءة مع دعم اللغة العربية
-                # إعدادات المكتبة jsonpickle حتى تشتغل صح ويا الملفات
-                jsonpickle.set_preferred_backend('json')
-                # تم إزالة: jsonpickle.set_decoder_options('json', object_hook=jsonpickle.object_hook)
-                jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
-
                 data_str = f.read()
-                # إذا الملف فارغ، نرجع بيانات فارغة
-                if not data_str:
-                    logging.warning(f"الملف {DATA_FILE} فارغ. تهيئة بيانات فارغة.")
+                if not data_str.strip(): # إذا الملف فارغ أو يحتوي على مسافات فقط
+                    logging.warning(f"الملف {DATA_FILE} فارغ أو يحتوي على مسافات فقط. تهيئة بيانات فارغة.")
                     suppliers_data = []
                     shops_data = []
-                    return
-
+                    return # ننهي الدالة هنا
+                
+                # إعدادات المكتبة jsonpickle حتى تشتغل صح
+                jsonpickle.set_preferred_backend('json')
+                jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
+                
                 data = jsonpickle.decode(data_str) # نقرا البيانات من الملف
-                suppliers_data = data.get('suppliers', []) # ناخذ المجهزين، إذا ماكو نخلي قائمة فارغة
-                shops_data = data.get('shops', []) # ناخذ المحلات، إذا ماكو نخلي قائمة فارغة
-                logging.info("تم تحميل البيانات بنجاح من data.json")
-        except Exception as e: # إذا صار خطأ بالتحميل
-            logging.error(f"صار خطأ بتحميل البيانات من {DATA_FILE}: {e}", exc_info=True)
-            suppliers_data = [] # نخلي القوائم فارغة إذا صار خطأ
+                suppliers_data = data.get('suppliers', []) # تصحيح: رجعناها للإسناد المباشر
+                shops_data = data.get('shops', []) # تصحيح: رجعناها للإسناد المباشر
+                
+                logging.info(f"تم تحميل البيانات بنجاح من {DATA_FILE}.")
+                logging.debug(f"بيانات المجهزين المحملة: {suppliers_data}")
+                logging.debug(f"بيانات المحلات المحملة: {shops_data}")
+
+        except jsonpickle.json.JSONDecodeError as jde: # خطأ في فك تشفير JSON
+            logging.error(f"خطأ في فك تشفير JSON عند تحميل البيانات من {DATA_FILE}: {jde}. الملف قد يكون تالفاً.", exc_info=True)
+            suppliers_data = [] 
+            shops_data = []
+        except Exception as e: # أي خطأ آخر بالتحميل
+            logging.error(f"صار خطأ عام بتحميل البيانات من {DATA_FILE}: {e}", exc_info=True)
+            suppliers_data = [] 
             shops_data = []
     else: # إذا الملف ما موجود
-        logging.info("الملف data.json ما موجود. تهيئة بيانات فارغة.")
+        logging.info(f"الملف {DATA_FILE} ما موجود. تهيئة بيانات فارغة.")
         suppliers_data = []
         shops_data = []
 
 # دالة لحفظ البيانات بالملف
-def save_data():
+def save_data(): # تم تغيير الاسم هنا من save_data_to_file
     data = {
         'suppliers': suppliers_data,
         'shops': shops_data
@@ -53,6 +61,6 @@ def save_data():
             jsonpickle.set_preferred_backend('json')
             jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
             f.write(jsonpickle.encode(data)) # نحفظ البيانات
-            logging.info("تم حفظ البيانات بنجاح في data.json")
+            logging.info(f"تم حفظ البيانات بنجاح في {DATA_FILE}.")
     except Exception as e: # إذا صار خطأ بالحفظ
         logging.error(f"صار خطأ بحفظ البيانات في {DATA_FILE}: {e}", exc_info=True)
