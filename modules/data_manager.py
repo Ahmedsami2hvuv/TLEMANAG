@@ -6,6 +6,8 @@ import logging
 DATA_FILE = 'data.json'
 
 # متغيرات عالمية (Global) راح نخزن بيها بيانات المجهزين والمحلات
+# IMPORTANT: Initialize these with empty lists if module is directly imported and used.
+# main.py will also get a reference to these.
 suppliers_data = []
 shops_data = []
 
@@ -29,8 +31,9 @@ def load_data(): # تم تغيير الاسم هنا من load_data_from_file
                 jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
                 
                 data = jsonpickle.decode(data_str) # نقرا البيانات من الملف
-                suppliers_data = data.get('suppliers', []) # تصحيح: رجعناها للإسناد المباشر
-                shops_data = data.get('shops', []) # تصحيح: رجعناها للإسناد المباشر
+                # تصحيح: نضمن أن القيم هي قوائم (lists) حتى لو كانت في الملف شيء آخر
+                suppliers_data[:] = data.get('suppliers', []) # استخدام slice assignment لتحديث القائمة بنفس المرجع
+                shops_data[:] = data.get('shops', []) # استخدام slice assignment لتحديث القائمة بنفس المرجع
                 
                 logging.info(f"تم تحميل البيانات بنجاح من {DATA_FILE}.")
                 logging.debug(f"بيانات المجهزين المحملة: {suppliers_data}")
