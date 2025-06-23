@@ -62,7 +62,7 @@ def get_new_shop_url(bot, message, user_states, get_admin_markup_func):
     bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
     logging.debug(f"DEBUG: Exiting get_new_shop_url. State reset for chat ID: {message.chat.id}")
 
-# --- تسلسل تعديل محل (معدل) ---
+# --- تسلسل تعديل محل ---
 def handle_edit_shop_start(bot, message, user_states):
     if not data_manager.shops_data:
         bot.send_message(message.chat.id, "لا يوجد محلات للتعديل. يرجى إضافة محل أولاً.")
@@ -83,9 +83,8 @@ def select_shop_to_edit_callback(bot, call, user_states, get_admin_markup_func):
     shop_index = int(call.data.split('_')[3])
     if 0 <= shop_index < len(data_manager.shops_data):
         selected_shop = data_manager.shops_data[shop_index]
-        # حالة جديدة لاختيار الحقل المراد تعديله
         user_states[call.message.chat.id] = {
-            'state': 'awaiting_shop_edit_field_selection', 
+            'state': 'awaiting_shop_edit_field_selection', # حالة جديدة
             'shop_index': shop_index
         }
         # عرض خيارات التعديل
