@@ -12,8 +12,8 @@ def set_admin_id(admin_id):
 def get_shop_menu_markup():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add(types.KeyboardButton('إضافة محل'), types.KeyboardButton('عرض المحلات'), 
-               types.KeyboardButton('تعديل محل'), # زر جديد لتعديل المحل
-               types.KeyboardButton('مسح محل'), # زر جديد لمسح المحل
+               types.KeyboardButton('تعديل محل'), 
+               types.KeyboardButton('مسح محل'), 
                types.KeyboardButton('الرجوع للقائمة الرئيسية'))
     return markup
 
@@ -64,7 +64,7 @@ def get_new_shop_url(bot, message, user_states, get_admin_markup_func):
     bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
     logging.debug(f"DEBUG: Exiting get_new_shop_url. State reset for chat ID: {message.chat.id}")
 
-# --- تسلسل تعديل محل ---
+# --- تسلسل تعديل محل (معدل) ---
 def handle_edit_shop_start(bot, message, user_states):
     if not data_manager.shops_data:
         bot.send_message(message.chat.id, "لا يوجد محلات للتعديل. يرجى إضافة محل أولاً.")
@@ -86,72 +86,63 @@ def select_shop_to_edit_callback(bot, call, user_states, get_admin_markup_func):
     if 0 <= shop_index < len(data_manager.shops_data):
         selected_shop = data_manager.shops_data[shop_index]
         user_states[call.message.chat.id] = {
-            'state': 'awaiting_shop_edit_info',
+            'state': 'awaiting_shop_new_name', # حالة جديدة
             'shop_index': shop_index,
             'data': selected_shop.copy() # نسخة من بيانات المحل
         }
         bot.send_message(call.message.chat.id, 
-                         f"لطفاً، ادخل المعلومات الجديدة للمحل {selected_shop['name']}:\n"
-                         "اسم جديد: [الاسم الجديد]\n"
-                         "رابط جديد: [الرابط الجديد]\n"
-                         "اترك فارغاً للحفاظ على القيمة الحالية.\n"
-                         "مثال:\n"
-                         "اسم جديد: مطعم النخيل\n"
-                         "رابط جديد: https://newrestaurant.com")
-        logging.info(f"المدير (ID: {call.from_user.id}) اختار المحل رقم {shop_index} للتعديل.")
+                         f"لطفاً، ادخل الاسم الجديد للمحل {selected_shop['name']}. اترك فارغاً للحفاظ على الاسم الحالي:")
+        logging.info(f"المدير (ID: {call.from_user.id}) اختار المحل رقم {shop_index} للتعديل (طلب الاسم).")
     else:
         bot.send_message(call.message.chat.id, "المحل غير موجود.", reply_markup=get_admin_markup_func())
         user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
 
-def process_edited_shop_info(bot, message, user_states, get_admin_markup_func):
+def get_edited_shop_new_name(bot, message, user_states):
     user_chat_id = message.chat.id
     current_state = user_states.get(user_chat_id, {})
-    if current_state.get('state') != 'awaiting_shop_edit_info': return 
+    if current_state.get('state') != 'awaiting_shop_new_name': return
 
+    new_name = message.text.strip()
+    if new_name:
+        # التحقق من عدم تكرار الاسم الجديد
+        shop_index = current_state.get('shop_index')
+        edited_shop = data_manager.shops_data[shop_index]
+        if any(s['name'] == new_name and s != edited_shop for s in data_manager.shops_data):
+            bot.send_message(user_chat_id, f"الاسم '{new_name}' موجود بالفعل لمحل آخر. لم يتم حفظ الاسم الجديد.")
+            # لا نغير الحالة، نطلب الاسم مرة أخرى أو ننهي العملية حسب الرغبة
+            return # نطلب الاسم مرة أخرى
+        current_state['data']['name'] = new_name
+    
+    current_state['state'] = 'awaiting_shop_new_url' # حالة جديدة
+    bot.send_message(user_chat_id, "لطفاً، ادخل رابط المحل الجديد (يجب أن يبدأ بـ http:// أو https://). اترك فارغاً للحفاظ على الرابط الحالي:")
+    logging.info(f"المدير (ID: {message.from_user.id}) أدخل الاسم الجديد للمحل.")
+
+def get_edited_shop_new_url(bot, message, user_states, get_admin_markup_func):
+    user_chat_id = message.chat.id
+    current_state = user_states.get(user_chat_id, {})
+    if current_state.get('state') != 'awaiting_shop_new_url': return
+
+    new_url = message.text.strip()
+    if new_url:
+        if not (new_url.startswith('http://') or new_url.startswith('https://')):
+            bot.send_message(user_chat_id, "الرابط الجديد يجب أن يبدأ بـ 'http://' أو 'https://'. لم يتم حفظ الرابط الجديد.")
+            return # نطلب الرابط مرة أخرى
+        current_state['data']['url'] = new_url
+    
+    # حفظ التغييرات بعد اكتمال جميع الخطوات
     shop_index = current_state.get('shop_index')
-    if not isinstance(shop_index, int) or not (0 <= shop_index < len(data_manager.shops_data)):
-        bot.send_message(user_chat_id, "حدث خطأ في تحديد المحل. يرجى المحاولة مرة أخرى.", reply_markup=get_admin_markup_func())
-        user_states[user_chat_id] = {'state': 'admin_main_menu'}
-        return
-
-    edited_shop = data_manager.shops_data[shop_index]
-    input_lines = message.text.split('\n')
-    changes_made = False
-
-    try:
-        for line in input_lines:
-            line = line.strip()
-            if line.startswith('اسم جديد:'):
-                new_name = line.replace('اسم جديد:', '').strip()
-                if new_name:
-                    # التحقق من عدم تكرار الاسم الجديد
-                    if any(s['name'] == new_name and s != edited_shop for s in data_manager.shops_data):
-                        bot.send_message(user_chat_id, f"الاسم '{new_name}' موجود بالفعل لمحل آخر. لم يتم حفظ الاسم الجديد.")
-                    else:
-                        edited_shop['name'] = new_name
-                        changes_made = True
-            elif line.startswith('رابط جديد:'):
-                new_url = line.replace('رابط جديد:', '').strip()
-                if new_url:
-                    if not (new_url.startswith('http://') or new_url.startswith('https://')):
-                        bot.send_message(user_chat_id, "الرابط الجديد يجب أن يبدأ بـ 'http://' أو 'https://'. لم يتم حفظ الرابط الجديد.")
-                    else:
-                        edited_shop['url'] = new_url
-                        changes_made = True
-        
-        if changes_made:
-            data_manager.save_data()
-            bot.send_message(user_chat_id, f"تم تعديل المحل {edited_shop['name']} بنجاح.")
-            logging.info(f"المدير (ID: {message.from_user.id}) عدل المحل {edited_shop['name']}.")
-        else:
-            bot.send_message(user_chat_id, "لم يتم إدخال أي تغييرات صالحة.")
-
-    except Exception as e:
-        logging.exception(f"خطأ في معالجة معلومات تعديل المحل للمدير (ID: {message.from_user.id}).")
-        bot.send_message(user_chat_id, f"صار عندي خطأ غير متوقع أثناء التعديل. الخطأ: {e}")
-    finally:
-        user_states[user_chat_id] = {'state': 'admin_main_menu'}
-        bot.send_message(user_chat_id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
+    original_shop = data_manager.shops_data[shop_index]
+    
+    # تحديث البيانات الأصلية للمحل
+    original_shop.update(current_state['data'])
+    
+    data_manager.save_data()
+    bot.send_message(user_chat_id, f"تم تعديل المحل {original_shop['name']} بنجاح.")
+    logging.info(f"المدير (ID: {message.from_user.id}) عدل المحل {original_shop['name']}.")
+    
+    user_states[user_chat_id] = {'state': 'admin_main_menu'}
+    bot.send_message(user_chat_id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
+    logging.info(f"المدير (ID: {message.from_user.id}) أكمل تعديل المحل. العودة للقائمة الرئيسية.")
 
 # --- تسلسل مسح محل ---
 def handle_delete_shop_start(bot, message, user_states):
@@ -177,7 +168,9 @@ def confirm_delete_shop_callback(bot, call, user_states, get_admin_markup_func):
         
         # مهم: إزالة المحل من أي مجهز كان مخصصاً له
         for supplier in data_manager.suppliers_data:
-            supplier['assigned_shops'] = [s for s in supplier['assigned_shops'] if s != shop_to_delete]
+            # نستخدم نسخة من قائمة assigned_shops لتجنب مشاكل التعديل أثناء المرور عليها
+            supplier['assigned_shops'] = [s for s in supplier['assigned_shops'] if s['name'] != shop_to_delete['name']]
+
 
         # إزالة المحل من القائمة الرئيسية للمحلات
         del data_manager.shops_data[shop_index]
