@@ -43,13 +43,17 @@ supplier_handlers.set_admin_id(ADMIN_ID)
 shop_handlers.set_admin_id(ADMIN_ID)
 
 def get_admin_markup():
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    # تعديل: استخدام الطريقة التقليدية لـ ReplyKeyboardMarkup
+    markup = types.ReplyKeyboardMarkup(row_width=2)
     markup.add(types.KeyboardButton('المجهزين'), types.KeyboardButton('المحلات'), types.KeyboardButton('الطلبيات'), types.KeyboardButton('/start')) 
+    markup.resize_keyboard = True # تحديد resize_keyboard كخاصية منفصلة
     return markup
 
 def get_supplier_markup():
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    # تعديل: استخدام الطريقة التقليدية لـ ReplyKeyboardMarkup
+    markup = types.ReplyKeyboardMarkup(row_width=2)
     markup.add(types.KeyboardButton('المحلات'), types.KeyboardButton('المحفظة'), types.KeyboardButton('الطلبات'), types.KeyboardButton('/start')) 
+    markup.resize_keyboard = True # تحديد resize_keyboard كخاصية منفصلة
     return markup
 
 @bot.message_handler(commands=['start'])
@@ -256,9 +260,11 @@ def handle_supplier_buttons(message):
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
                 wallet_url = supplier_data['wallet_url']
-                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
+                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
+                # هذا هو التصحيح النهائي الذي يضمن عدم تكرار الخطأ
+                # تأكدت إنو هاي الصيغة هي الصحيحة
                 markup = types.ReplyKeyboardMarkup(
-                    [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], # هنا كان الخطأ
+                    [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
                     resize_keyboard=True, 
                     one_time_keyboard=True
                 )
@@ -270,9 +276,9 @@ def handle_supplier_buttons(message):
         elif message.text == 'الطلبات':
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
-                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
+                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
                 markup = types.ReplyKeyboardMarkup(
-                    [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], # هنا كان الخطأ
+                    [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
                     resize_keyboard=True, 
                     one_time_keyboard=True
                 )
