@@ -17,7 +17,6 @@ def get_supplier_menu_markup():
                types.KeyboardButton('الرجوع للقائمة الرئيسية')) 
     return markup
 
-# دالة لإنشاء نص قائمة المجهزين
 def get_suppliers_list_str():
     if not data_manager.suppliers_data:
         return "ماكو مجهزين حالياً. ضيف مجهز جديد."
@@ -216,7 +215,7 @@ def cancel_supplier_edit_callback(bot, call, user_states, get_admin_markup_func)
     else:
         bot.send_message(call.message.chat.id, "انت لست مدير النظام.")
 
-# --- تسلسل مسح مجهز (لا تغيير) ---
+# --- تسلسل مسح مجهز ---
 def handle_delete_supplier_start(bot, message, user_states):
     if not data_manager.suppliers_data:
         bot.send_message(message.chat.id, "لا يوجد مجهزين للمسح.")
