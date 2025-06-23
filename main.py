@@ -104,7 +104,11 @@ def handle_admin_main_buttons(message):
         bot.send_message(message.chat.id, "قسم الطلبيات قيد الإنشاء حالياً.", reply_markup=get_admin_markup())
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
 
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'supplier_menu' and message.text in ['إضافة مجهز', 'عرض المجهزين', 'تخصيص محلات لمجهز', 'الرجوع للقائمة الرئيسية'])
+# ==============================================================================
+# معالجات إدارة المجهزين (محولّة إلى ملف supplier_handlers.py)
+# ==============================================================================
+
+@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'supplier_menu' and message.text in ['إضافة مجهز', 'عرض المجهزين', 'تخصيص محلات لمجهز', 'تعديل مجهز', 'مسح مجهز', 'الرجوع للقائمة الرئيسية']) # تم إضافة الزرين الجديدين
 def handle_supplier_menu_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) في قائمة المجهزين الفرعية، ضغط على: {message.text}")
     
@@ -115,6 +119,10 @@ def handle_supplier_menu_buttons(message):
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
     elif message.text == 'تخصيص محلات لمجهز':
         supplier_handlers.handle_assign_shops_start(bot, message, user_states, get_admin_markup)
+    elif message.text == 'تعديل مجهز': # استدعاء الدالة الجديدة
+        supplier_handlers.handle_edit_supplier_start(bot, message, user_states)
+    elif message.text == 'مسح مجهز': # استدعاء الدالة الجديدة
+        supplier_handlers.handle_delete_supplier_start(bot, message, user_states)
     elif message.text == 'الرجوع للقائمة الرئيسية':
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
         bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup())
@@ -131,6 +139,12 @@ def handle_get_new_supplier_code(message):
 def handle_get_new_supplier_wallet_url(message):
     supplier_handlers.get_new_supplier_wallet_url(bot, message, user_states, get_admin_markup)
 
+# معالجات تعديل المجهز
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_edit_info' and message.from_user.id == ADMIN_ID)
+def handle_process_edited_supplier_info(message):
+    supplier_handlers.process_edited_supplier_info(bot, message, user_states, get_admin_markup)
+
+# معالجات تخصيص ومسح المجهز (Callback Queries)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('select_supplier_for_shops_'))
 def handle_select_supplier_for_shops_callback(call):
     supplier_handlers.select_supplier_for_shops_callback(bot, call, user_states, get_admin_markup)
@@ -143,7 +157,20 @@ def handle_assign_shop_to_supplier_callback(call):
 def handle_finish_assigning_callback(call):
     supplier_handlers.finish_assigning_callback(bot, call, user_states, get_admin_markup)
 
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'shop_menu' and message.text in ['إضافة محل', 'عرض المحلات', 'الرجوع للقائمة الرئيسية'])
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_supplier_select_')) # Callback جديد لتعديل المجهز
+def handle_select_supplier_to_edit_callback(call):
+    supplier_handlers.select_supplier_to_edit_callback(bot, call, user_states, get_admin_markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_supplier_select_')) # Callback جديد لمسح المجهز
+def handle_confirm_delete_supplier_callback(call):
+    supplier_handlers.confirm_delete_supplier_callback(bot, call, user_states, get_admin_markup)
+
+
+# ==============================================================================
+# معالجات إدارة المحلات (محولّة إلى ملف shop_handlers.py)
+# ==============================================================================
+
+@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'shop_menu' and message.text in ['إضافة محل', 'عرض المحلات', 'تعديل محل', 'مسح محل', 'الرجوع للقائمة الرئيسية']) # تم إضافة الزرين الجديدين
 def handle_shop_menu_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) في قائمة المحلات الفرعية، ضغط على: {message.text}")
     
@@ -152,6 +179,10 @@ def handle_shop_menu_buttons(message):
     elif message.text == 'عرض المحلات':
         bot.send_message(message.chat.id, shop_handlers.get_shops_list_str(), reply_markup=get_admin_markup())
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
+    elif message.text == 'تعديل محل': # استدعاء الدالة الجديدة
+        shop_handlers.handle_edit_shop_start(bot, message, user_states)
+    elif message.text == 'مسح محل': # استدعاء الدالة الجديدة
+        shop_handlers.handle_delete_shop_start(bot, message, user_states)
     elif message.text == 'الرجوع للقائمة الرئيسية':
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
         bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup())
@@ -163,6 +194,24 @@ def handle_get_new_shop_name(message):
 @bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_url_for_new' and message.from_user.id == ADMIN_ID)
 def handle_get_new_shop_url(message):
     shop_handlers.get_new_shop_url(bot, message, user_states, get_admin_markup)
+
+# معالجات تعديل المحل
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_edit_info' and message.from_user.id == ADMIN_ID)
+def handle_process_edited_shop_info(message):
+    shop_handlers.process_edited_shop_info(bot, message, user_states, get_admin_markup)
+
+# معالجات مسح المحل (Callback)
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_shop_select_')) # Callback جديد لتعديل المحل
+def handle_select_shop_to_edit_callback(call):
+    shop_handlers.select_shop_to_edit_callback(bot, call, user_states, get_admin_markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_shop_select_')) # Callback جديد لمسح المحل
+def handle_confirm_delete_shop_callback(call):
+    shop_handlers.confirm_delete_shop_callback(bot, call, user_states, get_admin_markup)
+
+# ==============================================================================
+# معالجات تفاعل المجهز (المستخدم العادي)
+# ==============================================================================
 
 @bot.message_handler(func=lambda message: message.text in ['المحلات', 'المحفظة', 'الطلبات'] and message.chat.id in logged_in_suppliers)
 def handle_supplier_buttons(message):
@@ -184,7 +233,6 @@ def handle_supplier_buttons(message):
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
                 wallet_url = supplier_data['wallet_url']
-                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
                 markup = types.ReplyKeyboardMarkup(
                     [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
                     resize_keyboard=True, 
@@ -198,7 +246,6 @@ def handle_supplier_buttons(message):
         elif message.text == 'الطلبات':
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
-                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
                 markup = types.ReplyKeyboardMarkup(
                     [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
                     resize_keyboard=True, 
