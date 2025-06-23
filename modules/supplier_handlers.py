@@ -1,6 +1,6 @@
 from telebot import types
 import logging
-from . import data_manager # استيراد data_manager من نفس المجلد (النقطة كلش مهمة)
+from . import data_manager
 
 ADMIN_ID = None 
 
@@ -8,7 +8,6 @@ def set_admin_id(admin_id):
     global ADMIN_ID
     ADMIN_ID = admin_id
 
-# دالة لإنشاء أزرار قائمة المجهزين الفرعية
 def get_supplier_menu_markup():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add(types.KeyboardButton('إضافة مجهز'), types.KeyboardButton('عرض المجهزين'), 
@@ -18,7 +17,6 @@ def get_supplier_menu_markup():
                types.KeyboardButton('الرجوع للقائمة الرئيسية')) 
     return markup
 
-# دالة لإنشاء نص قائمة المجهزين
 def get_suppliers_list_str():
     if not data_manager.suppliers_data:
         return "ماكو مجهزين حالياً. ضيف مجهز جديد."
@@ -30,7 +28,7 @@ def get_suppliers_list_str():
         list_str += f"{i+1}. الرمز: {s['code']}, الاسم: {s['name']}\n   المحلات المخصصة: {shops_assigned}\n   رابط المحفظة: {wallet_link_status}\n"
     return list_str
 
-# --- تسلسل إضافة مجهز جديد ---
+# --- تسلسل إضافة مجهز جديد (لا تغيير) ---
 def handle_add_supplier_start(bot, message, user_states):
     bot.send_message(message.chat.id, "لطفاً، ادخل اسم المجهز:")
     user_states[message.chat.id] = {'state': 'awaiting_supplier_name_for_new', 'data': {}} 
@@ -82,7 +80,7 @@ def get_new_supplier_wallet_url(bot, message, user_states, get_admin_markup_func
     bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
     return True 
 
-# --- تسلسل تعديل مجهز (معدل) ---
+# --- تسلسل تعديل مجهز (معدل جذرياً) ---
 def handle_edit_supplier_start(bot, message, user_states):
     if not data_manager.suppliers_data:
         bot.send_message(message.chat.id, "لا يوجد مجهزين للتعديل. يرجى إضافة مجهز أولاً.")
@@ -104,77 +102,119 @@ def select_supplier_to_edit_callback(bot, call, user_states, get_admin_markup_fu
     if 0 <= supplier_index < len(data_manager.suppliers_data):
         selected_supplier = data_manager.suppliers_data[supplier_index]
         user_states[call.message.chat.id] = {
-            'state': 'awaiting_supplier_new_name', # حالة جديدة
-            'supplier_index': supplier_index,
-            'data': selected_supplier.copy() # نسخة من بيانات المجهز
+            'state': 'awaiting_supplier_edit_field_selection', # حالة جديدة
+            'supplier_index': supplier_index
         }
+        # عرض خيارات التعديل
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(types.InlineKeyboardButton(text="تعديل الاسم", callback_data="edit_supplier_field_name"))
+        markup.add(types.InlineKeyboardButton(text="تعديل الرمز", callback_data="edit_supplier_field_code"))
+        markup.add(types.InlineKeyboardButton(text="تعديل رابط المحفظة", callback_data="edit_supplier_field_wallet_url"))
+        markup.add(types.InlineKeyboardButton(text="العودة", callback_data="cancel_supplier_edit")) # زر للإلغاء
         bot.send_message(call.message.chat.id, 
-                         f"لطفاً، ادخل الاسم الجديد للمجهز {selected_supplier['name']}. اترك فارغاً للحفاظ على الاسم الحالي:")
-        logging.info(f"المدير (ID: {call.from_user.id}) اختار المجهز رقم {supplier_index} للتعديل (طلب الاسم).")
+                         f"ماذا تريد أن تعدل في المجهز {selected_supplier['name']} ({selected_supplier['code']})؟",
+                         reply_markup=markup)
+        logging.info(f"المدير (ID: {call.from_user.id}) اختار المجهز رقم {supplier_index} للتعديل (طلب حقل التعديل).")
     else:
         bot.send_message(call.message.chat.id, "المجهز غير موجود.", reply_markup=get_admin_markup_func())
         user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
 
-def get_edited_supplier_new_name(bot, message, user_states):
+def handle_supplier_edit_field_selection(bot, call, user_states, get_admin_markup_func):
+    bot.answer_callback_query(call.id)
+    if call.from_user.id != ADMIN_ID: return
+
+    user_chat_id = call.message.chat.id
+    current_state = user_states.get(user_chat_id, {})
+    if current_state.get('state') != 'awaiting_supplier_edit_field_selection':
+        bot.send_message(user_chat_id, "يرجى اختيار المجهز أولاً.", reply_markup=get_admin_markup_func())
+        user_states[user_chat_id] = {'state': 'admin_main_menu'}
+        return
+
+    supplier_index = current_state['supplier_index']
+    selected_field = call.data.replace('edit_supplier_field_', '')
+    selected_supplier = data_manager.suppliers_data[supplier_index]
+
+    user_states[user_chat_id]['state'] = f'awaiting_supplier_new_value_{selected_field}' # حالة خاصة لكل حقل
+    user_states[user_chat_id]['field_to_edit'] = selected_field # حفظ الحقل المراد تعديله
+    
+    prompt = ""
+    if selected_field == 'name':
+        prompt = f"ادخل الاسم الجديد للمجهز {selected_supplier['name']}:"
+    elif selected_field == 'code':
+        prompt = f"ادخل الرمز الجديد للمجهز {selected_supplier['code']}:"
+    elif selected_field == 'wallet_url':
+        prompt = f"ادخل رابط المحفظة الجديد للمجهز {selected_supplier['name']} (يجب أن يبدأ بـ http:// أو https://):"
+    
+    bot.send_message(user_chat_id, prompt)
+    logging.info(f"المدير (ID: {call.from_user.id}) اختار تعديل حقل {selected_field} للمجهز رقم {supplier_index}.")
+
+def process_edited_supplier_field(bot, message, user_states, get_admin_markup_func):
     user_chat_id = message.chat.id
     current_state = user_states.get(user_chat_id, {})
-    if current_state.get('state') != 'awaiting_supplier_new_name': return
-
-    new_name = message.text.strip()
-    if new_name:
-        current_state['data']['name'] = new_name
     
-    current_state['state'] = 'awaiting_supplier_new_code' # حالة جديدة
-    bot.send_message(user_chat_id, "لطفاً، ادخل الرمز الجديد للمجهز. اترك فارغاً للحفاظ على الرمز الحالي:")
-    logging.info(f"المدير (ID: {message.from_user.id}) أدخل الاسم الجديد للمجهز.")
+    # تحديد الحالة التي تتوقع قيمة جديدة لحقل معين
+    if not current_state.get('state', '').startswith('awaiting_supplier_new_value_'):
+        return # ليس في حالة انتظار قيمة لحقل معين
 
-def get_edited_supplier_new_code(bot, message, user_states):
-    user_chat_id = message.chat.id
-    current_state = user_states.get(user_chat_id, {})
-    if current_state.get('state') != 'awaiting_supplier_new_code': return
-
-    new_code = message.text.strip()
-    if new_code:
-        supplier_index = current_state.get('supplier_index')
-        edited_supplier = data_manager.suppliers_data[supplier_index]
-        if any(s['code'] == new_code and s != edited_supplier for s in data_manager.suppliers_data):
-            bot.send_message(user_chat_id, f"الرمز '{new_code}' موجود بالفعل لمجهز آخر. يرجى استخدام رمز آخر.")
-            return # نطلب الرمز مرة أخرى
-        current_state['data']['code'] = new_code
-    
-    current_state['state'] = 'awaiting_supplier_new_wallet_url' # حالة جديدة
-    bot.send_message(user_chat_id, "لطفاً، ادخل رابط المحفظة الجديد للمجهز (يجب أن يبدأ بـ http:// أو https://). اترك فارغاً للحفاظ على الرابط الحالي:")
-    logging.info(f"المدير (ID: {message.from_user.id}) أدخل الرمز الجديد للمجهز.")
-
-def get_edited_supplier_new_wallet_url(bot, message, user_states, get_admin_markup_func):
-    user_chat_id = message.chat.id
-    current_state = user_states.get(user_chat_id, {})
-    if current_state.get('state') != 'awaiting_supplier_new_wallet_url': return
-
-    new_wallet_url = message.text.strip()
-    if new_wallet_url:
-        if not (new_wallet_url.startswith('http://') or new_wallet_url.startswith('https://')):
-            bot.send_message(user_chat_id, "رابط المحفظة الجديد يجب أن يبدأ بـ 'http://' أو 'https://'. لم يتم حفظ الرابط الجديد.")
-            return # نطلب الرابط مرة أخرى
-        current_state['data']['wallet_url'] = new_wallet_url
-    
-    # حفظ التغييرات بعد اكتمال جميع الخطوات
+    field_to_edit = current_state.get('field_to_edit')
     supplier_index = current_state.get('supplier_index')
-    original_supplier = data_manager.suppliers_data[supplier_index]
+
+    if not isinstance(supplier_index, int) or not (0 <= supplier_index < len(data_manager.suppliers_data)):
+        bot.send_message(user_chat_id, "حدث خطأ في تحديد المجهز. يرجى المحاولة مرة أخرى.", reply_markup=get_admin_markup_func())
+        user_states[user_chat_id] = {'state': 'admin_main_menu'}
+        return
+
+    edited_supplier = data_manager.suppliers_data[supplier_index]
+    new_value = message.text.strip()
     
-    # تحديث البيانات الأصلية للمجهز
-    original_supplier.update(current_state['data'])
+    success = False
     
-    data_manager.save_data()
-    bot.send_message(user_chat_id, f"تم تعديل المجهز {original_supplier['name']} بنجاح.")
-    logging.info(f"المدير (ID: {message.from_user.id}) عدل المجهز {original_supplier['name']}.")
+    if field_to_edit == 'name':
+        if any(s['name'] == new_value and s != edited_supplier for s in data_manager.suppliers_data):
+            bot.send_message(user_chat_id, f"الاسم '{new_value}' موجود بالفعل لمجهز آخر. يرجى إدخال اسم آخر.")
+        elif new_value:
+            edited_supplier['name'] = new_value
+            success = True
+    elif field_to_edit == 'code':
+        if any(s['code'] == new_value and s != edited_supplier for s in data_manager.suppliers_data):
+            bot.send_message(user_chat_id, f"الرمز '{new_value}' موجود بالفعل لمجهز آخر. يرجى إدخال رمز آخر.")
+        elif new_value:
+            edited_supplier['code'] = new_value
+            success = True
+    elif field_to_edit == 'wallet_url':
+        if not (new_value.startswith('http://') or new_value.startswith('https://')):
+            bot.send_message(user_chat_id, "الرابط يجب أن يبدأ بـ 'http://' أو 'https://'. يرجى إدخال رابط صالح.")
+        elif new_value:
+            edited_supplier['wallet_url'] = new_value
+            success = True
     
+    if success:
+        data_manager.save_data()
+        bot.send_message(user_chat_id, f"تم تعديل حقل {field_to_edit} للمجهز {edited_supplier['name']} بنجاح.")
+        logging.info(f"المدير (ID: {message.from_user.id}) عدل حقل {field_to_edit} للمجهز {edited_supplier['name']}.")
+    else:
+        # إذا لم يتم التعديل بسبب خطأ (مثلاً تكرار الرمز)، نبقي الحالة لطلب إدخال صحيح
+        # وإلا، إذا كان إدخال فارغ، نخبر المستخدم ونرجع للقائمة الرئيسية
+        if not new_value and (field_to_edit == 'name' or field_to_edit == 'code' or field_to_edit == 'wallet_url'):
+            bot.send_message(user_chat_id, "لم يتم إدخال قيمة جديدة. لم يتم التعديل.")
+        else: # إذا كان هناك خطأ في الإدخال (مثلا رابط غير صالح) نبقي المستخدم في نفس حالة الإدخال
+            user_states[user_chat_id]['state'] = f'awaiting_supplier_new_value_{field_to_edit}' # نبقي نفس الحالة ليعيد المحاولة
+            return
+
+
     user_states[user_chat_id] = {'state': 'admin_main_menu'}
     bot.send_message(user_chat_id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
-    logging.info(f"المدير (ID: {message.from_user.id}) أكمل تعديل المجهز. العودة للقائمة الرئيسية.")
+    logging.info(f"المدير (ID: {message.from_user.id}) أكمل تعديل حقل المجهز. العودة للقائمة الرئيسية.")
 
+def cancel_supplier_edit_callback(bot, call, user_states, get_admin_markup_func):
+    bot.answer_callback_query(call.id, text="تم إلغاء التعديل.")
+    if call.from_user.id == ADMIN_ID:
+        user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
+        bot.send_message(call.message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
+    else:
+        bot.send_message(call.message.chat.id, "انت لست مدير النظام.")
 
-# --- تسلسل مسح مجهز ---
+# --- تسلسل مسح مجهز (لا تغيير) ---
 def handle_delete_supplier_start(bot, message, user_states):
     if not data_manager.suppliers_data:
         bot.send_message(message.chat.id, "لا يوجد مجهزين للمسح.")
@@ -196,14 +236,14 @@ def confirm_delete_supplier_callback(bot, call, user_states, get_admin_markup_fu
     if 0 <= supplier_index < len(data_manager.suppliers_data):
         supplier_to_delete = data_manager.suppliers_data[supplier_index]
         
-        # مهم: إزالة المجهز من أي مجهز كان مخصصاً له (لو كان مجهز مخصص لمجهز آخر)
+        # مهم: إزالة المحل من أي مجهز كان مخصصاً له (لو كان مجهز مخصص لمجهز آخر)
         # هذا السطر ليس له داعي، لأنه المجهزين لا يُخصصون لمجهزين آخرين
         # for supplier in data_manager.suppliers_data:
         #     supplier['assigned_shops'] = [s for s in supplier['assigned_shops'] if s != shop_to_delete]
 
         # إزالة المجهز من القائمة الرئيسية للمجهزين
         del data_manager.suppliers_data[supplier_index]
-        data_manager.save_data() # حفظ البيانات بعد المسح
+        data_manager.save_data() 
         bot.send_message(call.message.chat.id, f"تم مسح المجهز {supplier_to_delete['name']} بنجاح.")
         logging.info(f"المدير (ID: {call.from_user.id}) مسح المجهز {supplier_to_delete['name']}.")
     else:
@@ -213,7 +253,7 @@ def confirm_delete_supplier_callback(bot, call, user_states, get_admin_markup_fu
     user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
     bot.send_message(call.message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
 
-# --- تسلسل تخصيص المحلات للمجهز ---
+# --- تسلسل تخصيص المحلات للمجهز (لا تغيير) ---
 def handle_assign_shops_start(bot, message, user_states, get_admin_markup_func):
     if not data_manager.suppliers_data:
         logging.warning(f"المدير (ID: {message.from_user.id}) حاول تخصيص محلات ولكن لا يوجد مجهزين.")
@@ -283,7 +323,7 @@ def assign_shop_to_supplier_callback(bot, call, user_states, get_admin_markup_fu
             
             if selected_shop not in selected_supplier['assigned_shops']:
                 selected_supplier['assigned_shops'].append(selected_shop)
-                data_manager.save_data() # حفظ البيانات بعد تخصيص محل
+                data_manager.save_data() 
                 logging.info(f"تم تخصيص محل '{selected_shop['name']}' للمجهز '{selected_supplier['name']}' بواسطة المدير (ID: {call.from_user.id}).")
                 bot.send_message(call.message.chat.id, f"تم تخصيص محل '{selected_shop['name']}' للمجهز '{selected_supplier['name']}'.")
             else:
@@ -309,7 +349,7 @@ def assign_shop_to_supplier_callback(bot, call, user_states, get_admin_markup_fu
             bot.send_message(call.message.chat.id, "حدث خطأ في تحديد المجهز أو المحل.", reply_markup=get_admin_markup_func())
             user_states[user_chat_id] = {'state': 'admin_main_menu'}
         
-    else: # اذا كانت حالة المدير غير صحيحة عند استدعاء هذا الكول باك
+    else: 
         logging.warning(f"المدير (ID: {call.from_user.id}) حاول تخصيص محل دون اختيار مجهز أولاً.")
         bot.send_message(call.message.chat.id, "يرجى اختيار المجهز أولاً لتخصيص المحلات.", reply_markup=get_admin_markup_func())
         user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
