@@ -25,7 +25,7 @@ def get_shops_list_str():
         list_str += f"{i+1}. الاسم: {s['name']}, الرابط: {s['url']}\n"
     return list_str
 
-# --- تسلسل إضافة محل جديد (لا تغيير) ---
+# --- تسلسل إضافة محل جديد ---
 def handle_add_shop_start(bot, message, user_states):
     bot.send_message(message.chat.id, "لطفاً، ادخل اسم المحل:")
     user_states[message.chat.id] = {'state': 'awaiting_shop_name_for_new', 'data': {}} 
