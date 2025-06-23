@@ -140,15 +140,15 @@ def handle_get_new_supplier_wallet_url(message):
     supplier_handlers.get_new_supplier_wallet_url(bot, message, user_states, get_admin_markup)
 
 # معالجات تعديل المجهز (الآن تتضمن مراحل الاسم والرمز والرابط)
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_name' and message.from_user.id == ADMIN_ID)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_name_for_edit' and message.from_user.id == ADMIN_ID)
 def handle_get_edited_supplier_new_name(message):
     supplier_handlers.get_edited_supplier_new_name(bot, message, user_states)
 
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_code' and message.from_user.id == ADMIN_ID)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_code_for_edit' and message.from_user.id == ADMIN_ID)
 def handle_get_edited_supplier_new_code(message):
     supplier_handlers.get_edited_supplier_new_code(bot, message, user_states)
 
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_wallet_url' and message.from_user.id == ADMIN_ID)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_wallet_url_for_edit' and message.from_user.id == ADMIN_ID)
 def handle_get_edited_supplier_new_wallet_url(message):
     supplier_handlers.get_edited_supplier_new_wallet_url(bot, message, user_states, get_admin_markup)
 
@@ -169,6 +169,14 @@ def handle_finish_assigning_callback(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_supplier_select_')) 
 def handle_select_supplier_to_edit_callback(call):
     supplier_handlers.select_supplier_to_edit_callback(bot, call, user_states, get_admin_markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_supplier_field_')) # كولباك جديد لحقول التعديل
+def handle_supplier_edit_field_selection(call):
+    supplier_handlers.handle_supplier_edit_field_selection(bot, call, user_states, get_admin_markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == 'cancel_supplier_edit') # كولباك جديد للإلغاء
+def handle_cancel_supplier_edit_callback(call):
+    supplier_handlers.cancel_supplier_edit_callback(bot, call, user_states, get_admin_markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('delete_supplier_select_')) 
 def handle_confirm_delete_supplier_callback(call):
@@ -204,12 +212,11 @@ def handle_get_new_shop_name(message):
 def handle_get_new_shop_url(message):
     shop_handlers.get_new_shop_url(bot, message, user_states, get_admin_markup)
 
-# معالجات تعديل المحل (الآن تتضمن مراحل الاسم والرابط)
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_name' and message.from_user.id == ADMIN_ID)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_name_for_edit' and message.from_user.id == ADMIN_ID)
 def handle_get_edited_shop_new_name(message):
     shop_handlers.get_edited_shop_new_name(bot, message, user_states)
 
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_url' and message.from_user.id == ADMIN_ID)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_url_for_edit' and message.from_user.id == ADMIN_ID)
 def handle_get_edited_shop_new_url(message):
     shop_handlers.get_edited_shop_new_url(bot, message, user_states, get_admin_markup)
 
@@ -217,6 +224,14 @@ def handle_get_edited_shop_new_url(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_shop_select_'))
 def handle_select_shop_to_edit_callback(call):
     shop_handlers.select_shop_to_edit_callback(bot, call, user_states, get_admin_markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_shop_field_')) # كولباك جديد لحقول التعديل
+def handle_shop_edit_field_selection(call):
+    shop_handlers.handle_shop_edit_field_selection(bot, call, user_states, get_admin_markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == 'cancel_shop_edit') # كولباك جديد للإلغاء
+def handle_cancel_shop_edit_callback(call):
+    shop_handlers.cancel_shop_edit_callback(bot, call, user_states, get_admin_markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('delete_shop_select_'))
 def handle_confirm_delete_shop_callback(call):
@@ -247,9 +262,9 @@ def handle_supplier_buttons(message):
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
                 wallet_url = supplier_data['wallet_url']
-                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
+                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
                 markup = types.ReplyKeyboardMarkup(
-                    [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
+                    keyboard=[[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], # هنا كان الخطأ
                     resize_keyboard=True, 
                     one_time_keyboard=True
                 )
@@ -261,9 +276,9 @@ def handle_supplier_buttons(message):
         elif message.text == 'الطلبات':
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
-                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
+                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
                 markup = types.ReplyKeyboardMarkup(
-                    [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
+                    keyboard=[[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], # هنا كان الخطأ
                     resize_keyboard=True, 
                     one_time_keyboard=True
                 )
