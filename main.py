@@ -1,129 +1,65 @@
 import telebot
 from telebot import types
 import logging
-import jsonpickle
-import os 
-import time # تم استيراده جديداً لأغراض تصحيح الأخطاء
+import os # لإعدادات البيئة
+import time # لأغراض تصحيح الأخطاء والتأخير
 
 # ==============================================================================
 # إعدادات تسجيل الأخطاء (Logging)
 # ==============================================================================
+# تأكد أن المخرجات تذهب إلى stdout حتى يلتقطها Railway
 logging.basicConfig(
     level=logging.DEBUG, # مستوى DEBUG حتى نشوف كل التفاصيل
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()] # إخراج السجلات إلى الكونسول
 )
 # ==============================================================================
 
-# توكن البوت والـ ID مال المدير
+# توكن البوت والـ ID مال المدير (تعريفهم أولاً)
+# يفضل استخدام المتغيرات البيئية (Environment Variables) في Railway لتخزين التوكن
+# ولكن سنبقيها هنا مباشرة حاليا لتسهيل التشخيص.
 BOT_TOKEN = '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ'
 ADMIN_ID = 7032076289 # تأكد انو هذا هو ID مالتك الصحيح
 
-# تعيين الـ ADMIN_ID للموديلات الأخرى اللي تحتاجه
-# NOTE: This needs to be done AFTER main.py imports them and defines ADMIN_ID
-# but BEFORE any handlers might use them if imported at top-level.
-# It's safer to pass ADMIN_ID to functions that need it or set it up in main.py
-# after the bot object is created.
-# For now, let's keep it here but know it's a potential area for refactoring.
-
+# تعريف الكائن bot مبكراً
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ==============================================================================
-# وظائف حفظ وتحميل البيانات (باستخدام jsonpickle) - تم تحسينها
-# ==============================================================================
-DATA_FILE = 'data.json' # اسم ملف البيانات
+# تعريف المتغيرات العالمية الرئيسية قبل استيراد الموديلات
+user_states = {} 
+logged_in_suppliers = {}
 
-# متغيرات عالمية (Global) راح نخزن بيها بيانات المجهزين والمحلات
-# يجب تعريفها في main.py إذا كانت ستستخدم من قبل دوال في main.py أو تمرر للموديلات
-suppliers_data = []
-shops_data = []
-# تم نقلها إلى هنا للتوضيح أنها معرفة في هذا النطاق
-
-# دالة لتحميل البيانات من الملف
-def load_data_from_file():
-    global suppliers_data, shops_data # نعلن إننا سنعدل على المتغيرات العالمية
-    
-    logging.info(f"محاولة تحميل البيانات من {DATA_FILE}...")
-    if os.path.exists(DATA_FILE): # إذا الملف موجود
-        try:
-            with open(DATA_FILE, 'r', encoding='utf-8') as f: # نفتح الملف للقراءة مع دعم اللغة العربية
-                data_str = f.read()
-                if not data_str.strip(): # إذا الملف فارغ أو يحتوي على مسافات فقط
-                    logging.warning(f"الملف {DATA_FILE} فارغ أو يحتوي على مسافات فقط. تهيئة بيانات فارغة.")
-                    suppliers_data = []
-                    shops_data = []
-                    return # ننهي الدالة هنا
-                
-                # إعدادات المكتبة jsonpickle حتى تشتغل صح
-                jsonpickle.set_preferred_backend('json')
-                jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
-                
-                data = jsonpickle.decode(data_str) # نقرا البيانات من الملف
-                suppliers_data.extend(data.get('suppliers', [])) # نستخدم extend بدل الإسناد المباشر
-                shops_data.extend(data.get('shops', [])) # نستخدم extend بدل الإسناد المباشر
-                
-                logging.info(f"تم تحميل البيانات بنجاح من {DATA_FILE}.")
-                logging.debug(f"بيانات المجهزين المحملة: {suppliers_data}")
-                logging.debug(f"بيانات المحلات المحملة: {shops_data}")
-
-        except jsonpickle.json.JSONDecodeError as jde: # خطأ في فك تشفير JSON
-            logging.error(f"خطأ في فك تشفير JSON عند تحميل البيانات من {DATA_FILE}: {jde}. الملف قد يكون تالفاً.", exc_info=True)
-            suppliers_data = [] 
-            shops_data = []
-        except Exception as e: # أي خطأ آخر بالتحميل
-            logging.error(f"صار خطأ عام بتحميل البيانات من {DATA_FILE}: {e}", exc_info=True)
-            suppliers_data = [] 
-            shops_data = []
-    else: # إذا الملف ما موجود
-        logging.info(f"الملف {DATA_FILE} ما موجود. تهيئة بيانات فارغة.")
-        suppliers_data = []
-        shops_data = []
-
-def save_data_to_file():
-    data = {
-        'suppliers': suppliers_data,
-        'shops': shops_data
-    }
-    try:
-        with open(DATA_FILE, 'w', encoding='utf-8') as f: # نفتح الملف للكتابة مع دعم اللغة العربية
-            # إعدادات المكتبة jsonpickle للحفظ
-            jsonpickle.set_preferred_backend('json')
-            jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
-            f.write(jsonpickle.encode(data)) # نحفظ البيانات
-            logging.info(f"تم حفظ البيانات بنجاح في {DATA_FILE}.")
-    except Exception as e: # إذا صار خطأ بالحفظ
-        logging.error(f"صار خطأ بحفظ البيانات في {DATA_FILE}: {e}", exc_info=True)
-
-
-# ==============================================================================
-# تحميل البيانات عند بدء تشغيل البوت
-# يجب أن يحدث هذا قبل استخدام suppliers_data أو shops_data
-load_data_from_file()
-
-# استيراد الموديلات (الملفات) اللي سويناها بعد تحميل البيانات
-# هذا الترتيب مهم
+# استيراد الموديلات (الملفات) اللي سويناها بعد تعريف المتغيرات الأساسية
 from modules import data_manager
 from modules import supplier_handlers
 from modules import shop_handlers
 from modules import driver_handlers # مؤقت للمستقبل
 
-# الآن، بعد تحميل البيانات، يمكننا ربط المتغيرات العالمية في data_manager
-# هذه خطوة حاسمة لضمان أن data_manager يستخدم نفس القوائم العالمية في main.py
-data_manager.suppliers_data = suppliers_data
-data_manager.shops_data = shops_data
+# ==============================================================================
+# تحميل البيانات عند بدء تشغيل البوت
+# ==============================================================================
+try:
+    data_manager.load_data() 
+    logging.info("تم بدء تشغيل البوت وتحميل البيانات من main.py.")
+except Exception as e:
+    logging.exception("خطأ حرج عند تحميل البيانات عند بدء تشغيل البوت. البوت لن يعمل.")
+    # إذا فشل التحميل هنا، لا فائدة من تشغيل البوت
+    exit(1) # الخروج من التطبيق إذا فشل تحميل البيانات
 
 
-logging.info("تم بدء تشغيل البوت وتعبئة المتغيرات العالمية.")
+# ==============================================================================
+# ربط المتغيرات العالمية في data_manager مع القوائم الفعلية
+# هذا يضمن أن التحديثات على data_manager.suppliers_data ستنعكس على القائمة نفسها.
+# هذا جزء حاسم لضمان أن جميع أجزاء الكود تعمل على نفس البيانات المخزنة.
+data_manager.suppliers_data = data_manager.suppliers_data # إعادة تعيين للتأكد من المرجع
+data_manager.shops_data = data_manager.shops_data # إعادة تعيين للتأكد من المرجع
+# Note: Since data_manager.load_data() modifies its own global lists,
+# the `from modules import data_manager` already makes these accessible.
+# The previous `suppliers_data[:] = ...` in data_manager.py was to handle this more robustly.
 
-# تعيين الـ ADMIN_ID للموديلات الأخرى اللي تحتاجه
+# ==============================================================================
+# تعيين الـ ADMIN_ID للموديلات الأخرى اللي تحتاجه (الآن بعد تعريف كل شيء)
 supplier_handlers.set_admin_id(ADMIN_ID)
 shop_handlers.set_admin_id(ADMIN_ID)
-
-
-# حالات المستخدمين (User States)
-user_states = {} 
-
-# متغيرات لخزن المجهز الحالي اللي سجل دخول
-logged_in_suppliers = {}
 
 
 # ==============================================================================
@@ -346,4 +282,19 @@ def handle_general_fallback(message):
         user_states[message.chat.id] = {'state': 'awaiting_supplier_code'}
 
 
-bot.polling()
+# ==============================================================================
+# نقطة بدء تشغيل البوت (Polling)
+# ==============================================================================
+# تم نقل هذا الجزء هنا مع try-except لضمان التقاط أي خطأ عند بدء الـ polling
+if __name__ == '__main__': # هذا يضمن تشغيل الكود فقط عندما يتم تشغيل الملف مباشرة
+    try:
+        logging.info("بدء تشغيل البوت والبدء بالاستماع للرسائل...")
+        # استخدام thread_safe=True قد يساعد في بيئات مثل Railway إذا كانت الـ concurrency مشكلة
+        # timeout=20 يحدد كم يبقى البوت ينتظر التحديثات، none_stop يخليه ما يتوقف
+        bot.polling(none_stop=True, interval=0, timeout=20) 
+    except Exception as e:
+        logging.exception(f"خطأ حرج في تشغيل البوت: {e}")
+        # يمكن هنا إضافة محاولة إعادة تشغيل البوت بعد فترة، أو إرسال إشعار للمدير
+        # For now, we just log and exit critically
+        time.sleep(10) # انتظار 10 ثواني قبل الانتهاء (حتى لو Railway يحاول إعادة التشغيل)
+        exit(1) # الخروج من العملية لمنع استهلاك موارد إذا البوت ما جاي يشتغل
