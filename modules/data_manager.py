@@ -1,12 +1,15 @@
-رimport jsonpickle
+import jsonpickle # هذا السطر هو اللي كان بي المشكلة، تم حذف حرف 'ر' الزائد
 import os
 import logging
 
+# مكان ملف البيانات اللي راح نخزن بيه
 DATA_FILE = 'data.json'
 
+# متغيرات عالمية (Global) راح نخزن بيها بيانات المجهزين والمحلات
 suppliers_data = []
 shops_data = []
 
+# دالة لتحميل البيانات من الملف
 def load_data():
     global suppliers_data, shops_data 
     logging.info(f"محاولة تحميل البيانات من {DATA_FILE}...")
@@ -19,14 +22,14 @@ def load_data():
                     suppliers_data[:] = []
                     shops_data[:] = []
                     return
-
+                
                 jsonpickle.set_preferred_backend('json')
                 jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
-
+                
                 data = jsonpickle.decode(data_str)
                 suppliers_data[:] = data.get('suppliers', [])
                 shops_data[:] = data.get('shops', [])
-
+                
                 logging.info(f"تم تحميل البيانات بنجاح من {DATA_FILE}.")
                 logging.debug(f"بيانات المجهزين المحملة: {suppliers_data}")
                 logging.debug(f"بيانات المحلات المحملة: {shops_data}")
@@ -44,6 +47,7 @@ def load_data():
         suppliers_data[:] = []
         shops_data[:] = []
 
+# دالة لحفظ البيانات بالملف
 def save_data():
     data = {
         'suppliers': suppliers_data,
