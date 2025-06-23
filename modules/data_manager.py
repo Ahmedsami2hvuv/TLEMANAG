@@ -14,13 +14,21 @@ def load_data():
     global suppliers_data, shops_data
     if os.path.exists(DATA_FILE): # إذا الملف موجود
         try:
-            with open(DATA_FILE, 'r') as f: # نفتح الملف للقراءة
+            with open(DATA_FILE, 'r', encoding='utf-8') as f: # نفتح الملف للقراءة مع دعم اللغة العربية
                 # إعدادات المكتبة jsonpickle حتى تشتغل صح ويا الملفات
                 jsonpickle.set_preferred_backend('json')
-                jsonpickle.set_decoder_options('json', object_hook=jsonpickle.object_hook)
+                # تم إزالة: jsonpickle.set_decoder_options('json', object_hook=jsonpickle.object_hook)
                 jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
 
-                data = jsonpickle.decode(f.read()) # نقرا البيانات من الملف
+                data_str = f.read()
+                # إذا الملف فارغ، نرجع بيانات فارغة
+                if not data_str:
+                    logging.warning(f"الملف {DATA_FILE} فارغ. تهيئة بيانات فارغة.")
+                    suppliers_data = []
+                    shops_data = []
+                    return
+
+                data = jsonpickle.decode(data_str) # نقرا البيانات من الملف
                 suppliers_data = data.get('suppliers', []) # ناخذ المجهزين، إذا ماكو نخلي قائمة فارغة
                 shops_data = data.get('shops', []) # ناخذ المحلات، إذا ماكو نخلي قائمة فارغة
                 logging.info("تم تحميل البيانات بنجاح من data.json")
