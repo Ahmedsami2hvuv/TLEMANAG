@@ -2,7 +2,9 @@ import jsonpickle
 import os
 import logging
 
-DATA_FILE = 'data.json'
+# مكان ملف البيانات اللي راح نخزن بيه
+# تم تعديله ليكون في مجلد /tmp/ لضمان صلاحيات الكتابة في بيئات مثل Railway
+DATA_FILE = os.path.join('/tmp', 'data.json') 
 
 suppliers_data = []
 shops_data = []
@@ -19,14 +21,14 @@ def load_data():
                     suppliers_data[:] = []
                     shops_data[:] = []
                     return
-
+                
                 jsonpickle.set_preferred_backend('json')
                 jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
-
+                
                 data = jsonpickle.decode(data_str)
                 suppliers_data[:] = data.get('suppliers', [])
                 shops_data[:] = data.get('shops', [])
-
+                
                 logging.info(f"تم تحميل البيانات بنجاح من {DATA_FILE}.")
                 logging.debug(f"بيانات المجهزين المحملة: {suppliers_data}")
                 logging.debug(f"بيانات المحلات المحملة: {shops_data}")
@@ -45,6 +47,11 @@ def load_data():
         shops_data[:] = []
 
 def save_data():
+    # التأكد من وجود مجلد /tmp/ قبل الحفظ
+    tmp_dir = os.path.dirname(DATA_FILE)
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir, exist_ok=True) # إنشاء المجلد إذا لم يكن موجوداً
+
     data = {
         'suppliers': suppliers_data,
         'shops': shops_data
