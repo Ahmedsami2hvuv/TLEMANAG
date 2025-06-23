@@ -10,36 +10,28 @@ import time
 logging.basicConfig(
     level=logging.DEBUG, 
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()] # إخراج السجلات إلى الكونسول (مهم لـ Railway)
+    handlers=[logging.StreamHandler()] 
 )
 # ==============================================================================
 
 # توكن البوت والـ ID مال المدير
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ') # حاول سحبه من متغيرات البيئة
-ADMIN_ID = int(os.environ.get('ADMIN_ID', '7032076289')) # حاول سحبه من متغيرات البيئة
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ')
+ADMIN_ID = int(os.environ.get('ADMIN_ID', '7032076289'))
 
-# إذا التوكن أو الـ ID فارغين، نسجل خطأ ونخرج
 if not BOT_TOKEN or not ADMIN_ID:
     logging.critical("CRITICAL: BOT_TOKEN or ADMIN_ID are not set. Exiting.")
     exit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# تعريف المتغيرات العالمية الرئيسية قبل استيراد الموديلات
 user_states = {} 
 logged_in_suppliers = {}
 
-# استيراد الموديلات (الملفات)
-# يجب أن يتم الاستيراد هنا بعد تعريف المتغيرات الأساسية و Bot
-# وإلا قد تواجه مشاكل circular import أو عدم تعريف المتغيرات.
 from modules import data_manager
 from modules import supplier_handlers
 from modules import shop_handlers
-from modules import driver_handlers # مؤقت للمستقبل
+from modules import driver_handlers 
 
-# ==============================================================================
-# تحميل البيانات عند بدء تشغيل البوت
-# ==============================================================================
 try:
     data_manager.load_data() 
     logging.info("تم بدء تشغيل البوت وتحميل البيانات من main.py.")
@@ -47,15 +39,9 @@ except Exception as e:
     logging.exception("خطأ حرج عند تحميل البيانات عند بدء تشغيل البوت. البوت لن يعمل.")
     exit(1) 
 
-# ==============================================================================
-# تعيين الـ ADMIN_ID للموديلات الأخرى اللي تحتاجه
 supplier_handlers.set_admin_id(ADMIN_ID)
 shop_handlers.set_admin_id(ADMIN_ID)
 
-
-# ==============================================================================
-# دوال لوحة المفاتيح (Markup Functions) العامة
-# ==============================================================================
 def get_admin_markup():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add(types.KeyboardButton('المجهزين'), types.KeyboardButton('المحلات'), types.KeyboardButton('الطلبيات'))
@@ -66,17 +52,13 @@ def get_supplier_markup():
     markup.add(types.KeyboardButton('المحلات'), types.KeyboardButton('المحفظة'), types.KeyboardButton('الطلبات'))
     return markup
 
-# ==============================================================================
-# معالجات الرسائل (Message Handlers) الرئيسية
-# ==============================================================================
-
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     logging.info(f"استلمت أمر /start من المستخدم ID: {message.from_user.id}")
     if message.from_user.id == ADMIN_ID:
         bot.send_message(message.chat.id, "أهلاً بك يا مدير، هاي لوحة التحكم:", reply_markup=get_admin_markup())
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
-    else: # أي شخص مو مدير
+    else: 
         found_supplier = next((s for s in data_manager.suppliers_data if s.get('telegram_id') == message.from_user.id), None)
         if found_supplier:
             bot.send_message(message.chat.id, "أهلاً بك مرة أخرى، مجهزنا العزيز!", reply_markup=get_supplier_markup())
@@ -97,7 +79,7 @@ def handle_supplier_login(message):
             found_supplier['telegram_id'] = message.from_user.id 
             data_manager.save_data() 
             break
-
+    
     if found_supplier:
         logged_in_suppliers[message.chat.id] = found_supplier
         user_states[message.chat.id] = {'state': 'supplier_main_menu'}
@@ -111,7 +93,7 @@ def handle_supplier_login(message):
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'admin_main_menu' and message.text in ['المجهزين', 'المحلات', 'الطلبيات'])
 def handle_admin_main_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) ضغط على زر لوحة التحكم الرئيسية: {message.text}")
-
+    
     if message.text == 'المجهزين':
         bot.send_message(message.chat.id, "أختر عملية للمجهزين:", reply_markup=supplier_handlers.get_supplier_menu_markup())
         user_states[message.chat.id] = {'state': 'supplier_menu'}
@@ -122,14 +104,10 @@ def handle_admin_main_buttons(message):
         bot.send_message(message.chat.id, "قسم الطلبيات قيد الإنشاء حالياً.", reply_markup=get_admin_markup())
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
 
-# ==============================================================================
-# معالجات إدارة المجهزين (محولّة إلى ملف supplier_handlers.py)
-# ==============================================================================
-
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'supplier_menu' and message.text in ['إضافة مجهز', 'عرض المجهزين', 'تخصيص محلات لمجهز', 'الرجوع للقائمة الرئيسية'])
 def handle_supplier_menu_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) في قائمة المجهزين الفرعية، ضغط على: {message.text}")
-
+    
     if message.text == 'إضافة مجهز':
         supplier_handlers.handle_add_supplier_start(bot, message, user_states)
     elif message.text == 'عرض المجهزين':
@@ -165,14 +143,10 @@ def handle_assign_shop_to_supplier_callback(call):
 def handle_finish_assigning_callback(call):
     supplier_handlers.finish_assigning_callback(bot, call, user_states, get_admin_markup)
 
-# ==============================================================================
-# معالجات إدارة المحلات (محولّة إلى ملف shop_handlers.py)
-# ==============================================================================
-
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'shop_menu' and message.text in ['إضافة محل', 'عرض المحلات', 'الرجوع للقائمة الرئيسية'])
 def handle_shop_menu_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) في قائمة المحلات الفرعية، ضغط على: {message.text}")
-
+    
     if message.text == 'إضافة محل':
         shop_handlers.handle_add_shop_start(bot, message, user_states)
     elif message.text == 'عرض المحلات':
@@ -190,16 +164,11 @@ def handle_get_new_shop_name(message):
 def handle_get_new_shop_url(message):
     shop_handlers.get_new_shop_url(bot, message, user_states, get_admin_markup)
 
-
-# ==============================================================================
-# معالجات تفاعل المجهز (المستخدم العادي)
-# ==============================================================================
-
 @bot.message_handler(func=lambda message: message.text in ['المحلات', 'المحفظة', 'الطلبات'] and message.chat.id in logged_in_suppliers)
 def handle_supplier_buttons(message):
     supplier_data = logged_in_suppliers[message.chat.id]
     logging.info(f"المجهز '{supplier_data['name']}' (ID: {message.from_user.id}) ضغط على زر: {message.text}")
-
+    
     try:
         if message.text == 'المحلات':
             if not supplier_data['assigned_shops']:
@@ -210,11 +179,12 @@ def handle_supplier_buttons(message):
             markup = types.InlineKeyboardMarkup(row_width=1)
             for shop in supplier_data['assigned_shops']:
                 markup.add(types.InlineKeyboardButton(text=shop['name'], url=shop['url']))
-
+            
             bot.send_message(message.chat.id, "المحلات المخصصة لك:", reply_markup=markup)
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
                 wallet_url = supplier_data['wallet_url']
+                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
                 markup = types.ReplyKeyboardMarkup(
                     [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
                     resize_keyboard=True, 
@@ -228,6 +198,7 @@ def handle_supplier_buttons(message):
         elif message.text == 'الطلبات':
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
+                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
                 markup = types.ReplyKeyboardMarkup(
                     [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
                     resize_keyboard=True, 
@@ -246,14 +217,12 @@ def handle_supplier_buttons(message):
         if message.chat.id in logged_in_suppliers:
             bot.send_message(message.chat.id, "اختر من لوحة تحكم المجهز:", reply_markup=get_supplier_markup())
 
-# هذا المعالج العام يلتقط أي رسائل أخرى غير معالجة للمدير
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID)
 def handle_admin_fallback(message):
     logging.warning(f"المدير (ID: {message.from_user.id}) أرسل رسالة غير معالجة: '{message.text}' في الحالة: {user_states.get(message.chat.id,{}).get('state')}")
     bot.send_message(message.chat.id, "آسف، لم أفهم طلبك. يرجى اختيار من الأزرار أو بدء الأمر من جديد.", reply_markup=get_admin_markup())
     user_states[message.chat.id] = {'state': 'admin_main_menu'}
 
-# هذا المعالج العام يلتقط أي رسائل أخرى غير معالجة لغير المديرين
 @bot.message_handler(func=lambda message: message.from_user.id != ADMIN_ID)
 def handle_general_fallback(message):
     logging.warning(f"مستخدم غير مدير (ID: {message.from_user.id}) أرسل رسالة غير معالجة: '{message.text}' في الحالة: {user_states.get(message.chat.id,{}).get('state')}")
@@ -264,17 +233,10 @@ def handle_general_fallback(message):
         user_states[message.chat.id] = {'state': 'awaiting_supplier_code'}
 
 
-# ==============================================================================
-# نقطة بدء تشغيل البوت (Polling)
-# تم تغييرها لضمان الاستمرارية والمراقبة
-# ==============================================================================
 if __name__ == '__main__':
-    while True: # حلقة لا نهائية لإعادة تشغيل البوت إذا توقف
+    while True:
         try:
             logging.info("بدء تشغيل البوت والبدء بالاستماع للرسائل...")
-            # none_stop=True: يستمر في العمل حتى بعد حدوث أخطاء داخل الـ handlers
-            # interval=1: يحاول التحقق كل 1 ثانية
-            # timeout=20: المهلة القصوى للاتصال بسيرفرات تلغرام
             bot.polling(none_stop=True, interval=1, timeout=20) 
         except telebot.apihelper.ApiTelegramException as api_e:
             logging.exception(f"خطأ في API تلغرام (قد يكون توكن غير صالح أو مشكلة شبكة): {api_e}")
