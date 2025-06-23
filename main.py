@@ -32,11 +32,9 @@ from modules import supplier_handlers
 from modules import shop_handlers
 from modules import driver_handlers 
 
-# تحميل البيانات عند بدء تشغيل البوت
 try:
-    logging.info("بدء تحميل البيانات عند تشغيل البوت...")
     data_manager.load_data() 
-    logging.info("تم تحميل البيانات بنجاح عند تشغيل البوت.")
+    logging.info("تم بدء تشغيل البوت وتحميل البيانات من main.py.")
 except Exception as e:
     logging.exception("خطأ حرج عند تحميل البيانات عند بدء تشغيل البوت. البوت لن يعمل.")
     exit(1) 
@@ -141,10 +139,21 @@ def handle_get_new_supplier_code(message):
 def handle_get_new_supplier_wallet_url(message):
     supplier_handlers.get_new_supplier_wallet_url(bot, message, user_states, get_admin_markup)
 
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_edit_info' and message.from_user.id == ADMIN_ID)
-def handle_process_edited_supplier_info(message):
-    supplier_handlers.process_edited_supplier_info(bot, message, user_states, get_admin_markup)
+# معالجات تعديل المجهز (الآن تتضمن مراحل الاسم والرمز والرابط)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_name' and message.from_user.id == ADMIN_ID)
+def handle_get_edited_supplier_new_name(message):
+    supplier_handlers.get_edited_supplier_new_name(bot, message, user_states)
 
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_code' and message.from_user.id == ADMIN_ID)
+def handle_get_edited_supplier_new_code(message):
+    supplier_handlers.get_edited_supplier_new_code(bot, message, user_states)
+
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_wallet_url' and message.from_user.id == ADMIN_ID)
+def handle_get_edited_supplier_new_wallet_url(message):
+    supplier_handlers.get_edited_supplier_new_wallet_url(bot, message, user_states, get_admin_markup)
+
+
+# معالجات تخصيص ومسح المجهز (Callback Queries)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('select_supplier_for_shops_'))
 def handle_select_supplier_for_shops_callback(call):
     supplier_handlers.select_supplier_for_shops_callback(bot, call, user_states, get_admin_markup)
@@ -157,11 +166,11 @@ def handle_assign_shop_to_supplier_callback(call):
 def handle_finish_assigning_callback(call):
     supplier_handlers.finish_assigning_callback(bot, call, user_states, get_admin_markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_supplier_select_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_supplier_select_')) 
 def handle_select_supplier_to_edit_callback(call):
     supplier_handlers.select_supplier_to_edit_callback(bot, call, user_states, get_admin_markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_supplier_select_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_supplier_select_')) 
 def handle_confirm_delete_supplier_callback(call):
     supplier_handlers.confirm_delete_supplier_callback(bot, call, user_states, get_admin_markup)
 
@@ -195,9 +204,15 @@ def handle_get_new_shop_name(message):
 def handle_get_new_shop_url(message):
     shop_handlers.get_new_shop_url(bot, message, user_states, get_admin_markup)
 
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_edit_info' and message.from_user.id == ADMIN_ID)
-def handle_process_edited_shop_info(message):
-    shop_handlers.process_edited_shop_info(bot, message, user_states, get_admin_markup)
+# معالجات تعديل المحل (الآن تتضمن مراحل الاسم والرابط)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_name' and message.from_user.id == ADMIN_ID)
+def handle_get_edited_shop_new_name(message):
+    shop_handlers.get_edited_shop_new_name(bot, message, user_states)
+
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_url' and message.from_user.id == ADMIN_ID)
+def handle_get_edited_shop_new_url(message):
+    shop_handlers.get_edited_shop_new_url(bot, message, user_states, get_admin_markup)
+
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_shop_select_'))
 def handle_select_shop_to_edit_callback(call):
@@ -232,10 +247,9 @@ def handle_supplier_buttons(message):
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
                 wallet_url = supplier_data['wallet_url']
-                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
-                # وتم التأكد من أن ReplyKeyboardMarkup تُنشأ بالشكل الصحيح
+                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
                 markup = types.ReplyKeyboardMarkup(
-                    keyboard=[[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
+                    [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
                     resize_keyboard=True, 
                     one_time_keyboard=True
                 )
@@ -247,10 +261,9 @@ def handle_supplier_buttons(message):
         elif message.text == 'الطلبات':
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
-                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
-                # وتم التأكد من أن ReplyKeyboardMarkup تُنشأ بالشكل الصحيح
+                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
                 markup = types.ReplyKeyboardMarkup(
-                    keyboard=[[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
+                    [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
                     resize_keyboard=True, 
                     one_time_keyboard=True
                 )
