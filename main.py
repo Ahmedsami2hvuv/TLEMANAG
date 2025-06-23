@@ -1,34 +1,37 @@
 import telebot
 from telebot import types
 import logging
-import os # لإعدادات البيئة
-import time # لأغراض تصحيح الأخطاء والتأخير
+import os 
+import time 
 
 # ==============================================================================
 # إعدادات تسجيل الأخطاء (Logging)
 # ==============================================================================
-# تأكد أن المخرجات تذهب إلى stdout حتى يلتقطها Railway
 logging.basicConfig(
-    level=logging.DEBUG, # مستوى DEBUG حتى نشوف كل التفاصيل
+    level=logging.DEBUG, 
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()] # إخراج السجلات إلى الكونسول
+    handlers=[logging.StreamHandler()] # إخراج السجلات إلى الكونسول (مهم لـ Railway)
 )
 # ==============================================================================
 
-# توكن البوت والـ ID مال المدير (تعريفهم أولاً)
-# يفضل استخدام المتغيرات البيئية (Environment Variables) في Railway لتخزين التوكن
-# ولكن سنبقيها هنا مباشرة حاليا لتسهيل التشخيص.
-BOT_TOKEN = '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ'
-ADMIN_ID = 7032076289 # تأكد انو هذا هو ID مالتك الصحيح
+# توكن البوت والـ ID مال المدير
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ') # حاول سحبه من متغيرات البيئة
+ADMIN_ID = int(os.environ.get('ADMIN_ID', '7032076289')) # حاول سحبه من متغيرات البيئة
 
-# تعريف الكائن bot مبكراً
+# إذا التوكن أو الـ ID فارغين، نسجل خطأ ونخرج
+if not BOT_TOKEN or not ADMIN_ID:
+    logging.critical("CRITICAL: BOT_TOKEN or ADMIN_ID are not set. Exiting.")
+    exit(1)
+
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # تعريف المتغيرات العالمية الرئيسية قبل استيراد الموديلات
 user_states = {} 
 logged_in_suppliers = {}
 
-# استيراد الموديلات (الملفات) اللي سويناها بعد تعريف المتغيرات الأساسية
+# استيراد الموديلات (الملفات)
+# يجب أن يتم الاستيراد هنا بعد تعريف المتغيرات الأساسية و Bot
+# وإلا قد تواجه مشاكل circular import أو عدم تعريف المتغيرات.
 from modules import data_manager
 from modules import supplier_handlers
 from modules import shop_handlers
@@ -42,22 +45,10 @@ try:
     logging.info("تم بدء تشغيل البوت وتحميل البيانات من main.py.")
 except Exception as e:
     logging.exception("خطأ حرج عند تحميل البيانات عند بدء تشغيل البوت. البوت لن يعمل.")
-    # إذا فشل التحميل هنا، لا فائدة من تشغيل البوت
-    exit(1) # الخروج من التطبيق إذا فشل تحميل البيانات
-
+    exit(1) 
 
 # ==============================================================================
-# ربط المتغيرات العالمية في data_manager مع القوائم الفعلية
-# هذا يضمن أن التحديثات على data_manager.suppliers_data ستنعكس على القائمة نفسها.
-# هذا جزء حاسم لضمان أن جميع أجزاء الكود تعمل على نفس البيانات المخزنة.
-data_manager.suppliers_data = data_manager.suppliers_data # إعادة تعيين للتأكد من المرجع
-data_manager.shops_data = data_manager.shops_data # إعادة تعيين للتأكد من المرجع
-# Note: Since data_manager.load_data() modifies its own global lists,
-# the `from modules import data_manager` already makes these accessible.
-# The previous `suppliers_data[:] = ...` in data_manager.py was to handle this more robustly.
-
-# ==============================================================================
-# تعيين الـ ADMIN_ID للموديلات الأخرى اللي تحتاجه (الآن بعد تعريف كل شيء)
+# تعيين الـ ADMIN_ID للموديلات الأخرى اللي تحتاجه
 supplier_handlers.set_admin_id(ADMIN_ID)
 shop_handlers.set_admin_id(ADMIN_ID)
 
@@ -86,30 +77,27 @@ def send_welcome(message):
         bot.send_message(message.chat.id, "أهلاً بك يا مدير، هاي لوحة التحكم:", reply_markup=get_admin_markup())
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
     else: # أي شخص مو مدير
-        # نشوف إذا هذا الـ ID مال تليجرام مربوط بمجهز مسجل مسبقاً
         found_supplier = next((s for s in data_manager.suppliers_data if s.get('telegram_id') == message.from_user.id), None)
         if found_supplier:
             bot.send_message(message.chat.id, "أهلاً بك مرة أخرى، مجهزنا العزيز!", reply_markup=get_supplier_markup())
             user_states[message.chat.id] = {'state': 'supplier_main_menu'}
             logged_in_suppliers[message.chat.id] = found_supplier
-        else: # إذا مو مدير ولا مجهز مسجل دخول، راح نطلب منه الرمز
+        else: 
             bot.send_message(message.chat.id, "أهلاً بك، يرجى إدخال الرمز الخاص بك:")
             user_states[message.chat.id] = {'state': 'awaiting_supplier_code'}
 
-# معالج لطلب تسجيل دخول المجهزين
 @bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_code')
 def handle_supplier_login(message):
     entered_code = message.text.strip()
     logging.info(f"المستخدم ID {message.from_user.id} يحاول تسجيل الدخول بالرمز: {entered_code}")
     found_supplier = None
-    for s in data_manager.suppliers_data: # نستخدم البيانات المحملة من data_manager
+    for s in data_manager.suppliers_data:
         if s['code'] == entered_code:
             found_supplier = s
-            # تخزين الـ telegram_id مع بيانات المجهز لتسجيل الدخول التلقائي في المستقبل
             found_supplier['telegram_id'] = message.from_user.id 
-            data_manager.save_data() # حفظ البيانات بعد تحديث المجهز بالـ ID
+            data_manager.save_data() 
             break
-    
+
     if found_supplier:
         logged_in_suppliers[message.chat.id] = found_supplier
         user_states[message.chat.id] = {'state': 'supplier_main_menu'}
@@ -120,11 +108,10 @@ def handle_supplier_login(message):
         bot.send_message(message.chat.id, "الرمز غلط، يرجى المحاولة مرة ثانية.")
         user_states[message.chat.id] = {'state': 'awaiting_supplier_code'}
 
-# معالج أزرار لوحة تحكم المدير الرئيسية (المجهزين، المحلات، الطلبيات)
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'admin_main_menu' and message.text in ['المجهزين', 'المحلات', 'الطلبيات'])
 def handle_admin_main_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) ضغط على زر لوحة التحكم الرئيسية: {message.text}")
-    
+
     if message.text == 'المجهزين':
         bot.send_message(message.chat.id, "أختر عملية للمجهزين:", reply_markup=supplier_handlers.get_supplier_menu_markup())
         user_states[message.chat.id] = {'state': 'supplier_menu'}
@@ -139,11 +126,10 @@ def handle_admin_main_buttons(message):
 # معالجات إدارة المجهزين (محولّة إلى ملف supplier_handlers.py)
 # ==============================================================================
 
-# معالج أزرار القائمة الفرعية للمجهزين
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'supplier_menu' and message.text in ['إضافة مجهز', 'عرض المجهزين', 'تخصيص محلات لمجهز', 'الرجوع للقائمة الرئيسية'])
 def handle_supplier_menu_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) في قائمة المجهزين الفرعية، ضغط على: {message.text}")
-    
+
     if message.text == 'إضافة مجهز':
         supplier_handlers.handle_add_supplier_start(bot, message, user_states)
     elif message.text == 'عرض المجهزين':
@@ -155,7 +141,6 @@ def handle_supplier_menu_buttons(message):
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
         bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup())
 
-# معالجات تسلسل إضافة مجهز جديد
 @bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_name_for_new' and message.from_user.id == ADMIN_ID)
 def handle_get_new_supplier_name(message):
     supplier_handlers.get_new_supplier_name(bot, message, user_states)
@@ -168,7 +153,6 @@ def handle_get_new_supplier_code(message):
 def handle_get_new_supplier_wallet_url(message):
     supplier_handlers.get_new_supplier_wallet_url(bot, message, user_states, get_admin_markup)
 
-# معالجات تخصيص المحلات للمجهز (أزرار Inline)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('select_supplier_for_shops_'))
 def handle_select_supplier_for_shops_callback(call):
     supplier_handlers.select_supplier_for_shops_callback(bot, call, user_states, get_admin_markup)
@@ -185,11 +169,10 @@ def handle_finish_assigning_callback(call):
 # معالجات إدارة المحلات (محولّة إلى ملف shop_handlers.py)
 # ==============================================================================
 
-# معالج أزرار القائمة الفرعية للمحلات
 @bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'shop_menu' and message.text in ['إضافة محل', 'عرض المحلات', 'الرجوع للقائمة الرئيسية'])
 def handle_shop_menu_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) في قائمة المحلات الفرعية، ضغط على: {message.text}")
-    
+
     if message.text == 'إضافة محل':
         shop_handlers.handle_add_shop_start(bot, message, user_states)
     elif message.text == 'عرض المحلات':
@@ -199,7 +182,6 @@ def handle_shop_menu_buttons(message):
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
         bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup())
 
-# معالج تسلسل إضافة محل جديد (الاسم والرابط في خطوتين منفصلتين)
 @bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_name_for_new' and message.from_user.id == ADMIN_ID)
 def handle_get_new_shop_name(message):
     shop_handlers.get_new_shop_name(bot, message, user_states)
@@ -217,7 +199,7 @@ def handle_get_new_shop_url(message):
 def handle_supplier_buttons(message):
     supplier_data = logged_in_suppliers[message.chat.id]
     logging.info(f"المجهز '{supplier_data['name']}' (ID: {message.from_user.id}) ضغط على زر: {message.text}")
-    
+
     try:
         if message.text == 'المحلات':
             if not supplier_data['assigned_shops']:
@@ -228,7 +210,7 @@ def handle_supplier_buttons(message):
             markup = types.InlineKeyboardMarkup(row_width=1)
             for shop in supplier_data['assigned_shops']:
                 markup.add(types.InlineKeyboardButton(text=shop['name'], url=shop['url']))
-            
+
             bot.send_message(message.chat.id, "المحلات المخصصة لك:", reply_markup=markup)
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
@@ -284,17 +266,21 @@ def handle_general_fallback(message):
 
 # ==============================================================================
 # نقطة بدء تشغيل البوت (Polling)
+# تم تغييرها لضمان الاستمرارية والمراقبة
 # ==============================================================================
-# تم نقل هذا الجزء هنا مع try-except لضمان التقاط أي خطأ عند بدء الـ polling
-if __name__ == '__main__': # هذا يضمن تشغيل الكود فقط عندما يتم تشغيل الملف مباشرة
-    try:
-        logging.info("بدء تشغيل البوت والبدء بالاستماع للرسائل...")
-        # استخدام thread_safe=True قد يساعد في بيئات مثل Railway إذا كانت الـ concurrency مشكلة
-        # timeout=20 يحدد كم يبقى البوت ينتظر التحديثات، none_stop يخليه ما يتوقف
-        bot.polling(none_stop=True, interval=0, timeout=20) 
-    except Exception as e:
-        logging.exception(f"خطأ حرج في تشغيل البوت: {e}")
-        # يمكن هنا إضافة محاولة إعادة تشغيل البوت بعد فترة، أو إرسال إشعار للمدير
-        # For now, we just log and exit critically
-        time.sleep(10) # انتظار 10 ثواني قبل الانتهاء (حتى لو Railway يحاول إعادة التشغيل)
-        exit(1) # الخروج من العملية لمنع استهلاك موارد إذا البوت ما جاي يشتغل
+if __name__ == '__main__':
+    while True: # حلقة لا نهائية لإعادة تشغيل البوت إذا توقف
+        try:
+            logging.info("بدء تشغيل البوت والبدء بالاستماع للرسائل...")
+            # none_stop=True: يستمر في العمل حتى بعد حدوث أخطاء داخل الـ handlers
+            # interval=1: يحاول التحقق كل 1 ثانية
+            # timeout=20: المهلة القصوى للاتصال بسيرفرات تلغرام
+            bot.polling(none_stop=True, interval=1, timeout=20) 
+        except telebot.apihelper.ApiTelegramException as api_e:
+            logging.exception(f"خطأ في API تلغرام (قد يكون توكن غير صالح أو مشكلة شبكة): {api_e}")
+            logging.info("البوت سيحاول إعادة التشغيل خلال 5 ثواني...")
+            time.sleep(5)
+        except Exception as e:
+            logging.exception(f"خطأ حرج غير متوقع في تشغيل البوت: {e}")
+            logging.info("البوت سيحاول إعادة التشغيل خلال 10 ثواني...")
+            time.sleep(10)
