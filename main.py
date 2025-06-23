@@ -44,12 +44,12 @@ shop_handlers.set_admin_id(ADMIN_ID)
 
 def get_admin_markup():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add(types.KeyboardButton('المجهزين'), types.KeyboardButton('المحلات'), types.KeyboardButton('الطلبيات'))
+    markup.add(types.KeyboardButton('المجهزين'), types.KeyboardButton('المحلات'), types.KeyboardButton('الطلبيات'), types.KeyboardButton('/start')) # زر /start جديد
     return markup
 
 def get_supplier_markup():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add(types.KeyboardButton('المحلات'), types.KeyboardButton('المحفظة'), types.KeyboardButton('الطلبات'))
+    markup.add(types.KeyboardButton('المحلات'), types.KeyboardButton('المحفظة'), types.KeyboardButton('الطلبات'), types.KeyboardButton('/start')) # زر /start جديد
     return markup
 
 @bot.message_handler(commands=['start'])
@@ -90,7 +90,7 @@ def handle_supplier_login(message):
         bot.send_message(message.chat.id, "الرمز غلط، يرجى المحاولة مرة ثانية.")
         user_states[message.chat.id] = {'state': 'awaiting_supplier_code'}
 
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'admin_main_menu' and message.text in ['المجهزين', 'المحلات', 'الطلبيات'])
+@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'admin_main_menu' and message.text in ['المجهزين', 'المحلات', 'الطلبيات', '/start']) # أضفنا /start هنا
 def handle_admin_main_buttons(message):
     logging.info(f"المدير (ID: {message.from_user.id}) ضغط على زر لوحة التحكم الرئيسية: {message.text}")
     
@@ -102,6 +102,9 @@ def handle_admin_main_buttons(message):
         user_states[message.chat.id] = {'state': 'shop_menu'}
     elif message.text == 'الطلبيات':
         bot.send_message(message.chat.id, "قسم الطلبيات قيد الإنشاء حالياً.", reply_markup=get_admin_markup())
+        user_states[message.chat.id] = {'state': 'admin_main_menu'}
+    elif message.text == '/start': # معالجة زر /start في المنيو
+        bot.send_message(message.chat.id, "أهلاً بك يا مدير، هاي لوحة التحكم:", reply_markup=get_admin_markup())
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
 
 # ==============================================================================
@@ -140,17 +143,9 @@ def handle_get_new_supplier_wallet_url(message):
     supplier_handlers.get_new_supplier_wallet_url(bot, message, user_states, get_admin_markup)
 
 # معالجات تعديل المجهز (الآن تتضمن مراحل الاسم والرمز والرابط)
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_name_for_edit' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_supplier_new_name(message):
-    supplier_handlers.get_edited_supplier_new_name(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_code_for_edit' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_supplier_new_code(message):
-    supplier_handlers.get_edited_supplier_new_code(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_wallet_url_for_edit' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_supplier_new_wallet_url(message):
-    supplier_handlers.get_edited_supplier_new_wallet_url(bot, message, user_states, get_admin_markup)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state', '').startswith('awaiting_supplier_new_value_') and message.from_user.id == ADMIN_ID) # معدل لتحديد أكثر
+def handle_process_edited_supplier_field(message): # تم تغيير الاسم هنا
+    supplier_handlers.process_edited_supplier_field(bot, message, user_states, get_admin_markup)
 
 
 # معالجات تخصيص ومسح المجهز (Callback Queries)
@@ -212,13 +207,9 @@ def handle_get_new_shop_name(message):
 def handle_get_new_shop_url(message):
     shop_handlers.get_new_shop_url(bot, message, user_states, get_admin_markup)
 
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_name_for_edit' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_shop_new_name(message):
-    shop_handlers.get_edited_shop_new_name(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_url_for_edit' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_shop_new_url(message):
-    shop_handlers.get_edited_shop_new_url(bot, message, user_states, get_admin_markup)
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state', '').startswith('awaiting_shop_new_value_') and message.from_user.id == ADMIN_ID) # معدل لتحديد أكثر
+def handle_process_edited_shop_field(message): # تم تغيير الاسم هنا
+    shop_handlers.process_edited_shop_field(bot, message, user_states, get_admin_markup)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_shop_select_'))
@@ -242,11 +233,16 @@ def handle_confirm_delete_shop_callback(call):
 # معالجات تفاعل المجهز (المستخدم العادي)
 # ==============================================================================
 
-@bot.message_handler(func=lambda message: message.text in ['المحلات', 'المحفظة', 'الطلبات'] and message.chat.id in logged_in_suppliers)
+@bot.message_handler(func=lambda message: message.text in ['المحلات', 'المحفظة', 'الطلبات', '/start'] and message.chat.id in logged_in_suppliers) # أضفنا /start هنا
 def handle_supplier_buttons(message):
     supplier_data = logged_in_suppliers[message.chat.id]
     logging.info(f"المجهز '{supplier_data['name']}' (ID: {message.from_user.id}) ضغط على زر: {message.text}")
     
+    if message.text == '/start': # معالجة زر /start في منيو المجهز
+        bot.send_message(message.chat.id, "أهلاً بك مرة أخرى، مجهزنا العزيز!", reply_markup=get_supplier_markup())
+        user_states[message.chat.id] = {'state': 'supplier_main_menu'}
+        return # مهم جداً إنهاء المعالجة هنا
+        
     try:
         if message.text == 'المحلات':
             if not supplier_data['assigned_shops']:
@@ -262,9 +258,11 @@ def handle_supplier_buttons(message):
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
                 wallet_url = supplier_data['wallet_url']
-                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
+                # التصحيح الأخير لمشكلة 'keyboard=':
+                # التأكد من أن ReplyKeyboardMarkup يتم إنشاؤها بالصيغة الصحيحة
+                # أي: مباشرة بـ [[KeyboardButton]] بدون keyword 'keyboard='
                 markup = types.ReplyKeyboardMarkup(
-                    keyboard=[[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], # هنا كان الخطأ
+                    [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
                     resize_keyboard=True, 
                     one_time_keyboard=True
                 )
@@ -276,9 +274,10 @@ def handle_supplier_buttons(message):
         elif message.text == 'الطلبات':
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
-                # تصحيح الخطأ: تم حذف argument 'keyboard=' الزائد
+                # التصحيح الأخير لمشكلة 'keyboard=':
+                # التأكد من أن ReplyKeyboardMarkup يتم إنشاؤها بالصيغة الصحيحة
                 markup = types.ReplyKeyboardMarkup(
-                    keyboard=[[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], # هنا كان الخطأ
+                    [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
                     resize_keyboard=True, 
                     one_time_keyboard=True
                 )
@@ -292,6 +291,7 @@ def handle_supplier_buttons(message):
         logging.exception(f"خطأ حرج (تم التقاطه) في handle_supplier_buttons للمجهز (ID: {message.from_user.id}). الزر المضغوط: '{message.text}'.")
         bot.send_message(message.chat.id, f"صار عندي خطأ غير متوقع في معالجة طلبك. يرجى المحاولة مرة ثانية أو التواصل مع الدعم. الخطأ: {e}")
     finally:
+        # نضمن بقاء لوحة مفاتيح المجهز
         if message.chat.id in logged_in_suppliers:
             bot.send_message(message.chat.id, "اختر من لوحة تحكم المجهز:", reply_markup=get_supplier_markup())
 
