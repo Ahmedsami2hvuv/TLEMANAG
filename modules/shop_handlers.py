@@ -62,7 +62,7 @@ def get_new_shop_url(bot, message, user_states, get_admin_markup_func):
     bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
     logging.debug(f"DEBUG: Exiting get_new_shop_url. State reset for chat ID: {message.chat.id}")
 
-# --- تسلسل تعديل محل (معدل جذرياً) ---
+# --- تسلسل تعديل محل (معدل) ---
 def handle_edit_shop_start(bot, message, user_states):
     if not data_manager.shops_data:
         bot.send_message(message.chat.id, "لا يوجد محلات للتعديل. يرجى إضافة محل أولاً.")
@@ -83,8 +83,9 @@ def select_shop_to_edit_callback(bot, call, user_states, get_admin_markup_func):
     shop_index = int(call.data.split('_')[3])
     if 0 <= shop_index < len(data_manager.shops_data):
         selected_shop = data_manager.shops_data[shop_index]
+        # حالة جديدة لاختيار الحقل المراد تعديله
         user_states[call.message.chat.id] = {
-            'state': 'awaiting_shop_new_name_for_edit', # حالة جديدة
+            'state': 'awaiting_shop_edit_field_selection', 
             'shop_index': shop_index
         }
         # عرض خيارات التعديل
@@ -106,7 +107,8 @@ def handle_shop_edit_field_selection(bot, call, user_states, get_admin_markup_fu
 
     user_chat_id = call.message.chat.id
     current_state = user_states.get(user_chat_id, {})
-    if current_state.get('state') != 'awaiting_shop_new_name_for_edit': # تعديل: كان awaiting_shop_edit_selection
+    # التأكد من أن الحالة هي اختيار الحقل المراد تعديله
+    if current_state.get('state') != 'awaiting_shop_edit_field_selection':
         bot.send_message(user_chat_id, "يرجى اختيار المحل أولاً.", reply_markup=get_admin_markup_func())
         user_states[user_chat_id] = {'state': 'admin_main_menu'}
         return
@@ -115,8 +117,10 @@ def handle_shop_edit_field_selection(bot, call, user_states, get_admin_markup_fu
     selected_field = call.data.replace('edit_shop_field_', '')
     selected_shop = data_manager.shops_data[shop_index]
 
-    user_states[user_chat_id]['state'] = f'awaiting_shop_new_value_{selected_field}' # حالة خاصة لكل حقل
-    user_states[user_chat_id]['field_to_edit'] = selected_field # حفظ الحقل المراد تعديله
+    # حالة جديدة لانتظار القيمة الجديدة للحقل المحدد
+    user_states[user_chat_id]['state'] = f'awaiting_shop_new_value_{selected_field}_for_edit' 
+    user_states[user_chat_id]['field_to_edit'] = selected_field 
+    user_states[user_chat_id]['shop_index'] = shop_index # تأكيد حفظ الفهرس
     
     prompt = ""
     if selected_field == 'name':
@@ -131,7 +135,7 @@ def process_edited_shop_field(bot, message, user_states, get_admin_markup_func):
     user_chat_id = message.chat.id
     current_state = user_states.get(user_chat_id, {})
     
-    if not current_state.get('state', '').startswith('awaiting_shop_new_value_'):
+    if not current_state.get('state', '').startswith('awaiting_shop_new_value_') or not current_state.get('field_to_edit'):
         return 
 
     field_to_edit = current_state.get('field_to_edit')
@@ -150,27 +154,25 @@ def process_edited_shop_field(bot, message, user_states, get_admin_markup_func):
     if field_to_edit == 'name':
         if any(s['name'] == new_value and s != edited_shop for s in data_manager.shops_data):
             bot.send_message(user_chat_id, f"الاسم '{new_value}' موجود بالفعل لمحل آخر. يرجى إدخال اسم آخر.")
-        elif new_value:
+        elif new_value: 
             edited_shop['name'] = new_value
             success = True
+        else: 
+            bot.send_message(user_chat_id, "لم يتم إدخال اسم جديد. لم يتم التعديل.")
     elif field_to_edit == 'url':
-        if not (new_value.startswith('http://') or new_value.startswith('https://')):
+        if new_value and not (new_value.startswith('http://') or new_value.startswith('https://')):
             bot.send_message(user_chat_id, "الرابط يجب أن يبدأ بـ 'http://' أو 'https://'. يرجى إدخال رابط صالح.")
-        elif new_value:
+        elif new_value: 
             edited_shop['url'] = new_value
             success = True
+        else: 
+            bot.send_message(user_chat_id, "لم يتم إدخال رابط جديد. لم يتم التعديل.")
     
     if success:
         data_manager.save_data()
         bot.send_message(user_chat_id, f"تم تعديل حقل {field_to_edit} للمحل {edited_shop['name']} بنجاح.")
         logging.info(f"المدير (ID: {message.from_user.id}) عدل حقل {field_to_edit} للمحل {edited_shop['name']}.")
-    else:
-        if not new_value: # إذا كانت القيمة فارغة
-             bot.send_message(user_chat_id, "لم يتم إدخال قيمة جديدة. لم يتم التعديل.")
-        else: # إذا كان هناك خطأ في الإدخال (مثلا رابط غير صالح) نبقي المستخدم في نفس حالة الإدخال
-            user_states[user_chat_id]['state'] = f'awaiting_shop_new_value_{field_to_edit}' # نبقي نفس الحالة ليعيد المحاولة
-            return # لا نغير الحالة ونرجع للقائمة الرئيسية
-
+    
     user_states[user_chat_id] = {'state': 'admin_main_menu'}
     bot.send_message(user_chat_id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
     logging.info(f"المدير (ID: {message.from_user.id}) أكمل تعديل حقل المحل. العودة للقائمة الرئيسية.")
