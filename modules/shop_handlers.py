@@ -1,311 +1,185 @@
-import telebot
 from telebot import types
 import logging
-import os 
-import time 
+from . import data_manager # استيراد data_manager من نفس المجلد (النقطة كلش مهمة)
 
-# ==============================================================================
-# إعدادات تسجيل الأخطاء (Logging)
-# ==============================================================================
-logging.basicConfig(
-    level=logging.DEBUG, 
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()] 
-)
-# ==============================================================================
+ADMIN_ID = None 
 
-# توكن البوت والـ ID مال المدير
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ')
-ADMIN_ID = int(os.environ.get('ADMIN_ID', '7032076289'))
+def set_admin_id(admin_id):
+    global ADMIN_ID
+    ADMIN_ID = admin_id
 
-if not BOT_TOKEN or not ADMIN_ID:
-    logging.critical("CRITICAL: BOT_TOKEN or ADMIN_ID are not set. Exiting.")
-    exit(1)
-
-bot = telebot.TeleBot(BOT_TOKEN)
-
-user_states = {} 
-logged_in_suppliers = {}
-
-from modules import data_manager
-from modules import supplier_handlers
-from modules import shop_handlers
-from modules import driver_handlers 
-
-try:
-    data_manager.load_data() 
-    logging.info("تم بدء تشغيل البوت وتحميل البيانات من main.py.")
-except Exception as e:
-    logging.exception("خطأ حرج عند تحميل البيانات عند بدء تشغيل البوت. البوت لن يعمل.")
-    exit(1) 
-
-supplier_handlers.set_admin_id(ADMIN_ID)
-shop_handlers.set_admin_id(ADMIN_ID)
-
-def get_admin_markup():
+# دالة لإنشاء أزرار قائمة المحلات الفرعية
+def get_shop_menu_markup():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add(types.KeyboardButton('المجهزين'), types.KeyboardButton('المحلات'), types.KeyboardButton('الطلبيات'))
+    markup.add(types.KeyboardButton('إضافة محل'), types.KeyboardButton('عرض المحلات'), 
+               types.KeyboardButton('تعديل محل'), 
+               types.KeyboardButton('مسح محل'), 
+               types.KeyboardButton('الرجوع للقائمة الرئيسية'))
     return markup
 
-def get_supplier_markup():
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add(types.KeyboardButton('المحلات'), types.KeyboardButton('المحفظة'), types.KeyboardButton('الطلبات'))
-    return markup
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    logging.info(f"استلمت أمر /start من المستخدم ID: {message.from_user.id}")
-    if message.from_user.id == ADMIN_ID:
-        bot.send_message(message.chat.id, "أهلاً بك يا مدير، هاي لوحة التحكم:", reply_markup=get_admin_markup())
-        user_states[message.chat.id] = {'state': 'admin_main_menu'}
-    else: 
-        found_supplier = next((s for s in data_manager.suppliers_data if s.get('telegram_id') == message.from_user.id), None)
-        if found_supplier:
-            bot.send_message(message.chat.id, "أهلاً بك مرة أخرى، مجهزنا العزيز!", reply_markup=get_supplier_markup())
-            user_states[message.chat.id] = {'state': 'supplier_main_menu'}
-            logged_in_suppliers[message.chat.id] = found_supplier
-        else: 
-            bot.send_message(message.chat.id, "أهلاً بك، يرجى إدخال الرمز الخاص بك:")
-            user_states[message.chat.id] = {'state': 'awaiting_supplier_code'}
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_code')
-def handle_supplier_login(message):
-    entered_code = message.text.strip()
-    logging.info(f"المستخدم ID {message.from_user.id} يحاول تسجيل الدخول بالرمز: {entered_code}")
-    found_supplier = None
-    for s in data_manager.suppliers_data:
-        if s['code'] == entered_code:
-            found_supplier = s
-            found_supplier['telegram_id'] = message.from_user.id 
-            data_manager.save_data() 
-            break
+# دالة لإنشاء نص قائمة المحلات
+def get_shops_list_str():
+    if not data_manager.shops_data:
+        return "ماكو محلات حالياً. ضيف محل جديد."
     
-    if found_supplier:
-        logged_in_suppliers[message.chat.id] = found_supplier
-        user_states[message.chat.id] = {'state': 'supplier_main_menu'}
-        logging.info(f"المجهز '{found_supplier['name']}' (الرمز: {found_supplier['code']}) سجل الدخول. Chat ID: {message.chat.id}")
-        bot.send_message(message.chat.id, f"أهلاً بك يا {found_supplier['name']}! هاي لوحة تحكمك:", reply_markup=get_supplier_markup())
+    list_str = "قائمة المحلات:\n"
+    for i, s in enumerate(data_manager.shops_data):
+        list_str += f"{i+1}. الاسم: {s['name']}, الرابط: {s['url']}\n"
+    return list_str
+
+# --- تسلسل إضافة محل جديد ---
+def handle_add_shop_start(bot, message, user_states):
+    bot.send_message(message.chat.id, "لطفاً، ادخل اسم المحل:")
+    user_states[message.chat.id] = {'state': 'awaiting_shop_name_for_new', 'data': {}} 
+    logging.info(f"المدير (ID: {message.from_user.id}) بدأ بإضافة محل جديد (تسلسل جديد).")
+
+def get_new_shop_name(bot, message, user_states):
+    shop_name = message.text.strip()
+    logging.info(f"المدير (ID: {message.from_user.id}) أدخل اسم المحل: {shop_name}")
+    user_states[message.chat.id]['data']['name'] = shop_name
+    user_states[message.chat.id]['state'] = 'awaiting_shop_url_for_new' 
+    bot.send_message(message.chat.id, "لطفاً، ادخل رابط المحل (يجب أن يبدأ بـ http:// أو https://):")
+
+def get_new_shop_url(bot, message, user_states, get_admin_markup_func):
+    shop_url = message.text.strip()
+    logging.info(f"المدير (ID: {message.from_user.id}) أدخل رابط المحل: {shop_url}")
+
+    if not (shop_url.startswith('http://') or shop_url.startswith('https://')):
+        logging.warning(f"رابط محل غير صالح (يفتقد http(s)): '{shop_url}'")
+        bot.send_message(message.chat.id, "الرابط لازم يبدأ بـ 'http://' أو 'https://'. يرجى المحاولة مرة ثانية.")
+        return 
+
+    shop_name = user_states[message.chat.id]['data']['name']
+
+    if any(s['name'] == shop_name for s in data_manager.shops_data):
+        logging.warning(f"المدير حاول إضافة اسم محل موجود مسبقاً: '{shop_name}'")
+        bot.send_message(message.chat.id, f"هذا الاسم ({shop_name}) موجود لمحل ثاني. يرجى استخدام اسم آخر.")
     else:
-        logging.warning(f"محاولة تسجيل دخول فاشلة للرمز: {entered_code} من المستخدم ID: {message.from_user.id}")
-        bot.send_message(message.chat.id, "الرمز غلط، يرجى المحاولة مرة ثانية.")
-        user_states[message.chat.id] = {'state': 'awaiting_supplier_code'}
+        data_manager.shops_data.append({'name': shop_name, 'url': shop_url})
+        data_manager.save_data() # حفظ البيانات بعد إضافة محل جديد
+        logging.info(f"تمت إضافة محل جديد: الاسم='{shop_name}', الرابط='{shop_url}'")
+        bot.send_message(message.chat.id, f"تم حفظ المحل:\nالاسم: {shop_name}\nالرابط: {shop_url}")
+        
+    user_states[message.chat.id] = {'state': 'admin_main_menu'} 
+    bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
+    logging.debug(f"DEBUG: Exiting get_new_shop_url. State reset for chat ID: {message.chat.id}")
 
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'admin_main_menu' and message.text in ['المجهزين', 'المحلات', 'الطلبيات'])
-def handle_admin_main_buttons(message):
-    logging.info(f"المدير (ID: {message.from_user.id}) ضغط على زر لوحة التحكم الرئيسية: {message.text}")
-    
-    if message.text == 'المجهزين':
-        bot.send_message(message.chat.id, "أختر عملية للمجهزين:", reply_markup=supplier_handlers.get_supplier_menu_markup())
-        user_states[message.chat.id] = {'state': 'supplier_menu'}
-    elif message.text == 'المحلات':
-        bot.send_message(message.chat.id, "أختر عملية للمحلات:", reply_markup=shop_handlers.get_shop_menu_markup())
-        user_states[message.chat.id] = {'state': 'shop_menu'}
-    elif message.text == 'الطلبيات':
-        bot.send_message(message.chat.id, "قسم الطلبيات قيد الإنشاء حالياً.", reply_markup=get_admin_markup())
+# --- تسلسل تعديل محل (معدل) ---
+def handle_edit_shop_start(bot, message, user_states):
+    if not data_manager.shops_data:
+        bot.send_message(message.chat.id, "لا يوجد محلات للتعديل. يرجى إضافة محل أولاً.")
         user_states[message.chat.id] = {'state': 'admin_main_menu'}
+        return
 
-# ==============================================================================
-# معالجات إدارة المجهزين (محولّة إلى ملف supplier_handlers.py)
-# ==============================================================================
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for i, s in enumerate(data_manager.shops_data):
+        markup.add(types.InlineKeyboardButton(text=f"{s['name']}", callback_data=f"edit_shop_select_{i}"))
+    bot.send_message(message.chat.id, "اختر المحل الذي تريد تعديله:", reply_markup=markup)
+    user_states[message.chat.id] = {'state': 'awaiting_shop_edit_selection'}
+    logging.info(f"المدير (ID: {message.from_user.id}) بدأ بتعديل محل.")
 
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'supplier_menu' and message.text in ['إضافة مجهز', 'عرض المجهزين', 'تخصيص محلات لمجهز', 'تعديل مجهز', 'مسح مجهز', 'الرجوع للقائمة الرئيسية']) 
-def handle_supplier_menu_buttons(message):
-    logging.info(f"المدير (ID: {message.from_user.id}) في قائمة المجهزين الفرعية، ضغط على: {message.text}")
-    
-    if message.text == 'إضافة مجهز':
-        supplier_handlers.handle_add_supplier_start(bot, message, user_states)
-    elif message.text == 'عرض المجهزين':
-        bot.send_message(message.chat.id, supplier_handlers.get_suppliers_list_str(), reply_markup=get_admin_markup())
-        user_states[message.chat.id] = {'state': 'admin_main_menu'}
-    elif message.text == 'تخصيص محلات لمجهز':
-        supplier_handlers.handle_assign_shops_start(bot, message, user_states, get_admin_markup)
-    elif message.text == 'تعديل مجهز':
-        supplier_handlers.handle_edit_supplier_start(bot, message, user_states)
-    elif message.text == 'مسح مجهز':
-        supplier_handlers.handle_delete_supplier_start(bot, message, user_states)
-    elif message.text == 'الرجوع للقائمة الرئيسية':
-        user_states[message.chat.id] = {'state': 'admin_main_menu'}
-        bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup())
+def select_shop_to_edit_callback(bot, call, user_states, get_admin_markup_func):
+    bot.answer_callback_query(call.id)
+    if call.from_user.id != ADMIN_ID: return
 
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_name_for_new' and message.from_user.id == ADMIN_ID)
-def handle_get_new_supplier_name(message):
-    supplier_handlers.get_new_supplier_name(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_code_for_new' and message.from_user.id == ADMIN_ID)
-def handle_get_new_supplier_code(message):
-    supplier_handlers.get_new_supplier_code(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_wallet_url_for_new' and message.from_user.id == ADMIN_ID)
-def handle_get_new_supplier_wallet_url(message):
-    supplier_handlers.get_new_supplier_wallet_url(bot, message, user_states, get_admin_markup)
-
-# معالجات تعديل المجهز (الآن تتضمن مراحل الاسم والرمز والرابط)
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_name' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_supplier_new_name(message):
-    supplier_handlers.get_edited_supplier_new_name(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_code' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_supplier_new_code(message):
-    supplier_handlers.get_edited_supplier_new_code(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_supplier_new_wallet_url' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_supplier_new_wallet_url(message):
-    supplier_handlers.get_edited_supplier_new_wallet_url(bot, message, user_states, get_admin_markup)
-
-
-# معالجات تخصيص ومسح المجهز (Callback Queries)
-@bot.callback_query_handler(func=lambda call: call.data.startswith('select_supplier_for_shops_'))
-def handle_select_supplier_for_shops_callback(call):
-    supplier_handlers.select_supplier_for_shops_callback(bot, call, user_states, get_admin_markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('assign_shop_'))
-def handle_assign_shop_to_supplier_callback(call):
-    supplier_handlers.assign_shop_to_supplier_callback(bot, call, user_states, get_admin_markup)
-
-@bot.callback_query_handler(func=lambda call: call.data == 'finish_assigning_shops')
-def handle_finish_assigning_callback(call):
-    supplier_handlers.finish_assigning_callback(bot, call, user_states, get_admin_markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_supplier_select_')) 
-def handle_select_supplier_to_edit_callback(call):
-    supplier_handlers.select_supplier_to_edit_callback(bot, call, user_states, get_admin_markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_supplier_select_')) 
-def handle_confirm_delete_supplier_callback(call):
-    supplier_handlers.confirm_delete_supplier_callback(bot, call, user_states, get_admin_markup)
-
-
-# ==============================================================================
-# معالجات إدارة المحلات (محولّة إلى ملف shop_handlers.py)
-# ==============================================================================
-
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and user_states.get(message.chat.id, {}).get('state') == 'shop_menu' and message.text in ['إضافة محل', 'عرض المحلات', 'تعديل محل', 'مسح محل', 'الرجوع للقائمة الرئيسية']) 
-def handle_shop_menu_buttons(message):
-    logging.info(f"المدير (ID: {message.from_user.id}) في قائمة المحلات الفرعية، ضغط على: {message.text}")
-    
-    if message.text == 'إضافة محل':
-        shop_handlers.handle_add_shop_start(bot, message, user_states)
-    elif message.text == 'عرض المحلات':
-        bot.send_message(message.chat.id, shop_handlers.get_shops_list_str(), reply_markup=get_admin_markup())
-        user_states[message.chat.id] = {'state': 'admin_main_menu'}
-    elif message.text == 'تعديل محل':
-        shop_handlers.handle_edit_shop_start(bot, message, user_states)
-    elif message.text == 'مسح محل':
-        shop_handlers.handle_delete_shop_start(bot, message, user_states)
-    elif message.text == 'الرجوع للقائمة الرئيسية':
-        user_states[message.chat.id] = {'state': 'admin_main_menu'}
-        bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup())
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_name_for_new' and message.from_user.id == ADMIN_ID)
-def handle_get_new_shop_name(message):
-    shop_handlers.get_new_shop_name(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_url_for_new' and message.from_user.id == ADMIN_ID)
-def handle_get_new_shop_url(message):
-    shop_handlers.get_new_shop_url(bot, message, user_states, get_admin_markup)
-
-# معالجات تعديل المحل (الآن تتضمن مراحل الاسم والرابط)
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_name' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_shop_new_name(message):
-    shop_handlers.get_edited_shop_new_name(bot, message, user_states)
-
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id, {}).get('state') == 'awaiting_shop_new_url' and message.from_user.id == ADMIN_ID)
-def handle_get_edited_shop_new_url(message):
-    shop_handlers.get_edited_shop_new_url(bot, message, user_states, get_admin_markup)
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_shop_select_'))
-def handle_select_shop_to_edit_callback(call):
-    shop_handlers.select_shop_to_edit_callback(bot, call, user_states, get_admin_markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_shop_select_'))
-def handle_confirm_delete_shop_callback(call):
-    shop_handlers.confirm_delete_shop_callback(bot, call, user_states, get_admin_markup)
-
-
-# ==============================================================================
-# معالجات تفاعل المجهز (المستخدم العادي)
-# ==============================================================================
-
-@bot.message_handler(func=lambda message: message.text in ['المحلات', 'المحفظة', 'الطلبات'] and message.chat.id in logged_in_suppliers)
-def handle_supplier_buttons(message):
-    supplier_data = logged_in_suppliers[message.chat.id]
-    logging.info(f"المجهز '{supplier_data['name']}' (ID: {message.from_user.id}) ضغط على زر: {message.text}")
-    
-    try:
-        if message.text == 'المحلات':
-            if not supplier_data['assigned_shops']:
-                bot.send_message(message.chat.id, "لا توجد محلات مخصصة لك حالياً.")
-                logging.info(f"المجهز '{supplier_data['name']}' ليس لديه محلات مخصصة.")
-                return
-
-            markup = types.InlineKeyboardMarkup(row_width=1)
-            for shop in supplier_data['assigned_shops']:
-                markup.add(types.InlineKeyboardButton(text=shop['name'], url=shop['url']))
-            
-            bot.send_message(message.chat.id, "المحلات المخصصة لك:", reply_markup=markup)
-        elif message.text == 'المحفظة':
-            if supplier_data.get('wallet_url'):
-                wallet_url = supplier_data['wallet_url']
-                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
-                markup = types.ReplyKeyboardMarkup(
-                    [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
-                    resize_keyboard=True, 
-                    one_time_keyboard=True
-                )
-                bot.send_message(message.chat.id, "المحفظة الخاصة بك:", reply_markup=markup)
-                logging.info(f"المجهز '{supplier_data['name']}' فتح رابط المحفظة: {wallet_url}")
-            else:
-                bot.send_message(message.chat.id, "لم يتم تحديد رابط المحفظة الخاص بك بعد. يرجى التواصل مع المدير.")
-                logging.warning(f"المجهز '{supplier_data['name']}' حاول فتح المحفظة، ولكن لا يوجد رابط محدد.")
-        elif message.text == 'الطلبات':
-            if supplier_data.get('orders_url'): 
-                orders_url = supplier_data['orders_url']
-                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
-                markup = types.ReplyKeyboardMarkup(
-                    [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
-                    resize_keyboard=True, 
-                    one_time_keyboard=True
-                )
-                bot.send_message(message.chat.id, "الطلبات الخاصة بك:", reply_markup=markup)
-                logging.info(f"المجهز '{supplier_data['name']}' أرسل رابط الطلبات: {orders_url}")
-            else: 
-                bot.send_message(message.chat.id, "قسم الطلبيات قيد الإنشاء حالياً.") 
-                logging.info(f"المجهز '{supplier_data['name']}' ضغط على 'الطلبات' (الرابط غير محدد أو الميزة قيد الإنشاء).")
-
-    except Exception as e:
-        logging.exception(f"خطأ حرج (تم التقاطه) في handle_supplier_buttons للمجهز (ID: {message.from_user.id}). الزر المضغوط: '{message.text}'.")
-        bot.send_message(message.chat.id, f"صار عندي خطأ غير متوقع في معالجة طلبك. يرجى المحاولة مرة ثانية أو التواصل مع الدعم. الخطأ: {e}")
-    finally:
-        if message.chat.id in logged_in_suppliers:
-            bot.send_message(message.chat.id, "اختر من لوحة تحكم المجهز:", reply_markup=get_supplier_markup())
-
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID)
-def handle_admin_fallback(message):
-    logging.warning(f"المدير (ID: {message.from_user.id}) أرسل رسالة غير معالجة: '{message.text}' في الحالة: {user_states.get(message.chat.id,{}).get('state')}")
-    bot.send_message(message.chat.id, "آسف، لم أفهم طلبك. يرجى اختيار من الأزرار أو بدء الأمر من جديد.", reply_markup=get_admin_markup())
-    user_states[message.chat.id] = {'state': 'admin_main_menu'}
-
-@bot.message_handler(func=lambda message: message.from_user.id != ADMIN_ID)
-def handle_general_fallback(message):
-    logging.warning(f"مستخدم غير مدير (ID: {message.from_user.id}) أرسل رسالة غير معالجة: '{message.text}' في الحالة: {user_states.get(message.chat.id,{}).get('state')}")
-    if message.chat.id in logged_in_suppliers:
-        bot.send_message(message.chat.id, "آسف، لم أفهم طلبك. يرجى اختيار من الأزرار.", reply_markup=get_supplier_markup())
+    shop_index = int(call.data.split('_')[3])
+    if 0 <= shop_index < len(data_manager.shops_data):
+        selected_shop = data_manager.shops_data[shop_index]
+        user_states[call.message.chat.id] = {
+            'state': 'awaiting_shop_new_name', # حالة جديدة
+            'shop_index': shop_index,
+            'data': selected_shop.copy() # نسخة من بيانات المحل
+        }
+        bot.send_message(call.message.chat.id, 
+                         f"لطفاً، ادخل الاسم الجديد للمحل {selected_shop['name']}. اترك فارغاً للحفاظ على الاسم الحالي:")
+        logging.info(f"المدير (ID: {call.from_user.id}) اختار المحل رقم {shop_index} للتعديل (طلب الاسم).")
     else:
-        bot.send_message(message.chat.id, "آسف، لم أفهم طلبك. يرجى إدخال الرمز الخاص بك أو بدء الأمر من جديد.")
-        user_states[message.chat.id] = {'state': 'awaiting_supplier_code'}
+        bot.send_message(call.message.chat.id, "المحل غير موجود.", reply_markup=get_admin_markup_func())
+        user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
+
+def get_edited_shop_new_name(bot, message, user_states):
+    user_chat_id = message.chat.id
+    current_state = user_states.get(user_chat_id, {})
+    if current_state.get('state') != 'awaiting_shop_new_name': return
+
+    new_name = message.text.strip()
+    if new_name:
+        # التحقق من عدم تكرار الاسم الجديد
+        shop_index = current_state.get('shop_index')
+        edited_shop = data_manager.shops_data[shop_index]
+        if any(s['name'] == new_name and s != edited_shop for s in data_manager.shops_data):
+            bot.send_message(user_chat_id, f"الاسم '{new_name}' موجود بالفعل لمحل آخر. لم يتم حفظ الاسم الجديد.")
+            # لا نغير الحالة، نطلب الاسم مرة أخرى أو ننهي العملية حسب الرغبة
+            return # نطلب الاسم مرة أخرى
+        current_state['data']['name'] = new_name
+    
+    current_state['state'] = 'awaiting_shop_new_url' # حالة جديدة
+    bot.send_message(user_chat_id, "لطفاً، ادخل رابط المحل الجديد (يجب أن يبدأ بـ http:// أو https://). اترك فارغاً للحفاظ على الرابط الحالي:")
+    logging.info(f"المدير (ID: {message.from_user.id}) أدخل الاسم الجديد للمحل.")
+
+def get_edited_shop_new_url(bot, message, user_states, get_admin_markup_func):
+    user_chat_id = message.chat.id
+    current_state = user_states.get(user_chat_id, {})
+    if current_state.get('state') != 'awaiting_shop_new_url': return
+
+    new_url = message.text.strip()
+    if new_url:
+        if not (new_url.startswith('http://') or new_url.startswith('https://')):
+            bot.send_message(user_chat_id, "الرابط الجديد يجب أن يبدأ بـ 'http://' أو 'https://'. لم يتم حفظ الرابط الجديد.")
+            return # نطلب الرابط مرة أخرى
+        current_state['data']['url'] = new_url
+    
+    # حفظ التغييرات بعد اكتمال جميع الخطوات
+    shop_index = current_state.get('shop_index')
+    original_shop = data_manager.shops_data[shop_index]
+    
+    # تحديث البيانات الأصلية للمحل
+    original_shop.update(current_state['data'])
+    
+    data_manager.save_data()
+    bot.send_message(user_chat_id, f"تم تعديل المحل {original_shop['name']} بنجاح.")
+    logging.info(f"المدير (ID: {message.from_user.id}) عدل المحل {original_shop['name']}.")
+    
+    user_states[user_chat_id] = {'state': 'admin_main_menu'}
+    bot.send_message(user_chat_id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
+    logging.info(f"المدير (ID: {message.from_user.id}) أكمل تعديل المحل. العودة للقائمة الرئيسية.")
+
+# --- تسلسل مسح محل ---
+def handle_delete_shop_start(bot, message, user_states):
+    if not data_manager.shops_data:
+        bot.send_message(message.chat.id, "لا يوجد محلات للمسح.")
+        user_states[message.chat.id] = {'state': 'admin_main_menu'}
+        return
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for i, s in enumerate(data_manager.shops_data):
+        markup.add(types.InlineKeyboardButton(text=f"{s['name']}", callback_data=f"delete_shop_select_{i}"))
+    bot.send_message(message.chat.id, "اختر المحل الذي تريد مسحه:", reply_markup=markup)
+    user_states[message.chat.id] = {'state': 'awaiting_shop_delete_selection'}
+    logging.info(f"المدير (ID: {message.from_user.id}) بدأ بمسح محل.")
+
+def confirm_delete_shop_callback(bot, call, user_states, get_admin_markup_func):
+    bot.answer_callback_query(call.id)
+    if call.from_user.id != ADMIN_ID: return
+
+    shop_index = int(call.data.split('_')[3])
+    if 0 <= shop_index < len(data_manager.shops_data):
+        shop_to_delete = data_manager.shops_data[shop_index]
+        
+        # مهم: إزالة المحل من أي مجهز كان مخصصاً له
+        for supplier in data_manager.suppliers_data:
+            # نستخدم نسخة من قائمة assigned_shops لتجنب مشاكل التعديل أثناء المرور عليها
+            supplier['assigned_shops'] = [s for s in supplier['assigned_shops'] if s['name'] != shop_to_delete['name']]
 
 
-if __name__ == '__main__':
-    while True:
-        try:
-            logging.info("بدء تشغيل البوت والبدء بالاستماع للرسائل...")
-            bot.polling(none_stop=True, interval=1, timeout=20) 
-        except telebot.apihelper.ApiTelegramException as api_e:
-            logging.exception(f"خطأ في API تلغرام (قد يكون توكن غير صالح أو مشكلة شبكة): {api_e}")
-            logging.info("البوت سيحاول إعادة التشغيل خلال 5 ثواني...")
-            time.sleep(5)
-        except Exception as e:
-            logging.exception(f"خطأ حرج غير متوقع في تشغيل البوت: {e}")
-            logging.info("البوت سيحاول إعادة التشغيل خلال 10 ثواني...")
-            time.sleep(10)
+        # إزالة المحل من القائمة الرئيسية للمحلات
+        del data_manager.shops_data[shop_index]
+        data_manager.save_data() # حفظ البيانات بعد المسح
+        bot.send_message(call.message.chat.id, f"تم مسح المحل {shop_to_delete['name']} بنجاح.")
+        logging.info(f"المدير (ID: {call.from_user.id}) مسح المحل {shop_to_delete['name']}.")
+    else:
+        bot.send_message(call.message.chat.id, "المحل غير موجود.", reply_markup=get_admin_markup_func())
+        logging.warning(f"المدير (ID: {call.from_user.id}) حاول مسح محل غير موجود.")
+
+    user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
+    bot.send_message(call.message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
