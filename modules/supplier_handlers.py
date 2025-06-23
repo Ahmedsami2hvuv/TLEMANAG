@@ -17,6 +17,7 @@ def get_supplier_menu_markup():
                types.KeyboardButton('الرجوع للقائمة الرئيسية')) 
     return markup
 
+# دالة لإنشاء نص قائمة المجهزين
 def get_suppliers_list_str():
     if not data_manager.suppliers_data:
         return "ماكو مجهزين حالياً. ضيف مجهز جديد."
@@ -28,7 +29,7 @@ def get_suppliers_list_str():
         list_str += f"{i+1}. الرمز: {s['code']}, الاسم: {s['name']}\n   المحلات المخصصة: {shops_assigned}\n   رابط المحفظة: {wallet_link_status}\n"
     return list_str
 
-# --- Supplier Creation Flow ---
+# --- تسلسل إضافة مجهز جديد ---
 def handle_add_supplier_start(bot, message, user_states):
     bot.send_message(message.chat.id, "لطفاً، ادخل اسم المجهز:")
     user_states[message.chat.id] = {'state': 'awaiting_supplier_name_for_new', 'data': {}} 
@@ -80,7 +81,7 @@ def get_new_supplier_wallet_url(bot, message, user_states, get_admin_markup_func
     bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
     return True 
 
-# --- تسلسل تعديل مجهز (معدل) ---
+# --- تسلسل تعديل مجهز ---
 def handle_edit_supplier_start(bot, message, user_states):
     if not data_manager.suppliers_data:
         bot.send_message(message.chat.id, "لا يوجد مجهزين للتعديل. يرجى إضافة مجهز أولاً.")
@@ -101,9 +102,8 @@ def select_supplier_to_edit_callback(bot, call, user_states, get_admin_markup_fu
     supplier_index = int(call.data.split('_')[3])
     if 0 <= supplier_index < len(data_manager.suppliers_data):
         selected_supplier = data_manager.suppliers_data[supplier_index]
-        # حالة جديدة لاختيار الحقل المراد تعديله
         user_states[call.message.chat.id] = {
-            'state': 'awaiting_supplier_edit_field_selection', 
+            'state': 'awaiting_supplier_edit_field_selection', # حالة جديدة
             'supplier_index': supplier_index
         }
         # عرض خيارات التعديل
@@ -111,7 +111,7 @@ def select_supplier_to_edit_callback(bot, call, user_states, get_admin_markup_fu
         markup.add(types.InlineKeyboardButton(text="تعديل الاسم", callback_data="edit_supplier_field_name"))
         markup.add(types.InlineKeyboardButton(text="تعديل الرمز", callback_data="edit_supplier_field_code"))
         markup.add(types.InlineKeyboardButton(text="تعديل رابط المحفظة", callback_data="edit_supplier_field_wallet_url"))
-        markup.add(types.InlineKeyboardButton(text="العودة", callback_data="cancel_supplier_edit")) 
+        markup.add(types.InlineKeyboardButton(text="العودة", callback_data="cancel_supplier_edit")) # زر للإلغاء
         bot.send_message(call.message.chat.id, 
                          f"ماذا تريد أن تعدل في المجهز {selected_supplier['name']} ({selected_supplier['code']})؟",
                          reply_markup=markup)
@@ -176,26 +176,26 @@ def process_edited_supplier_field(bot, message, user_states, get_admin_markup_fu
     if field_to_edit == 'name':
         if any(s['name'] == new_value and s != edited_supplier for s in data_manager.suppliers_data):
             bot.send_message(user_chat_id, f"الاسم '{new_value}' موجود بالفعل لمجهز آخر. يرجى إدخال اسم آخر.")
-        elif new_value: # فقط إذا لم يكن فارغاً
+        elif new_value: 
             edited_supplier['name'] = new_value
             success = True
-        else: # إذا كان فارغاً
+        else: 
             bot.send_message(user_chat_id, "لم يتم إدخال اسم جديد. لم يتم التعديل.")
     elif field_to_edit == 'code':
         if any(s['code'] == new_value and s != edited_supplier for s in data_manager.suppliers_data):
             bot.send_message(user_chat_id, f"الرمز '{new_value}' موجود بالفعل لمجهز آخر. يرجى إدخال رمز آخر.")
-        elif new_value: # فقط إذا لم يكن فارغاً
+        elif new_value: 
             edited_supplier['code'] = new_value
             success = True
-        else: # إذا كان فارغاً
+        else: 
             bot.send_message(user_chat_id, "لم يتم إدخال رمز جديد. لم يتم التعديل.")
     elif field_to_edit == 'wallet_url':
         if new_value and not (new_value.startswith('http://') or new_value.startswith('https://')):
             bot.send_message(user_chat_id, "الرابط يجب أن يبدأ بـ 'http://' أو 'https://'. يرجى إدخال رابط صالح.")
-        elif new_value: # فقط إذا لم يكن فارغاً والرابط صالح
+        elif new_value: 
             edited_supplier['wallet_url'] = new_value
             success = True
-        else: # إذا كان فارغاً
+        else: 
             bot.send_message(user_chat_id, "لم يتم إدخال رابط جديد. لم يتم التعديل.")
     
     if success:
