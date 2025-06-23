@@ -17,6 +17,7 @@ def get_supplier_menu_markup():
                types.KeyboardButton('الرجوع للقائمة الرئيسية')) 
     return markup
 
+# دالة لإنشاء نص قائمة المجهزين (تم التعديل لإظهار رابط المحفظة)
 def get_suppliers_list_str():
     if not data_manager.suppliers_data:
         return "ماكو مجهزين حالياً. ضيف مجهز جديد."
@@ -24,8 +25,8 @@ def get_suppliers_list_str():
     list_str = "قائمة المجهزين:\n"
     for i, s in enumerate(data_manager.suppliers_data):
         shops_assigned = ", ".join([shop['name'] for shop in s['assigned_shops']]) if s['assigned_shops'] else "لا يوجد"
-        wallet_link_status = s.get('wallet_url', "غير محدد")
-        list_str += f"{i+1}. الرمز: {s['code']}, الاسم: {s['name']}\n   المحلات المخصصة: {shops_assigned}\n   رابط المحفظة: {wallet_link_status}\n"
+        wallet_link_value = s.get('wallet_url', "غير محدد") # نجيب القيمة الفعلية
+        list_str += f"{i+1}. الرمز: {s['code']}, الاسم: {s['name']}\n   المحلات المخصصة: {shops_assigned}\n   رابط المحفظة: {wallet_link_value}\n" # نعرض القيمة
     return list_str
 
 # --- تسلسل إضافة مجهز جديد ---
@@ -215,7 +216,7 @@ def cancel_supplier_edit_callback(bot, call, user_states, get_admin_markup_func)
     else:
         bot.send_message(call.message.chat.id, "انت لست مدير النظام.")
 
-# --- تسلسل مسح مجهز ---
+# --- تسلسل مسح مجهز (لا تغيير) ---
 def handle_delete_supplier_start(bot, message, user_states):
     if not data_manager.suppliers_data:
         bot.send_message(message.chat.id, "لا يوجد مجهزين للمسح.")
