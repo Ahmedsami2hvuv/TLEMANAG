@@ -43,18 +43,18 @@ supplier_handlers.set_admin_id(ADMIN_ID)
 shop_handlers.set_admin_id(ADMIN_ID)
 
 def get_admin_markup():
-    # تعديل: استخدام الطريقة التقليدية لـ ReplyKeyboardMarkup
-    admin_markup_obj = types.ReplyKeyboardMarkup(row_width=2) # بدون resize_keyboard هنا
-    admin_markup_obj.add(types.KeyboardButton('المجهزين'), types.KeyboardButton('المحلات'), types.KeyboardButton('الطلبيات'), types.KeyboardButton('/start')) 
-    admin_markup_obj.resize_keyboard = True # تحديد resize_keyboard كخاصية منفصلة
-    return admin_markup_obj
+    # استخدام متغير مختلف لـ markup هنا لتجنب التضارب
+    admin_main_markup = types.ReplyKeyboardMarkup(row_width=2) 
+    admin_main_markup.add(types.KeyboardButton('المجهزين'), types.KeyboardButton('المحلات'), types.KeyboardButton('الطلبيات'), types.KeyboardButton('/start')) 
+    admin_main_markup.resize_keyboard = True 
+    return admin_main_markup
 
 def get_supplier_markup():
-    # تعديل: استخدام الطريقة التقليدية لـ ReplyKeyboardMarkup
-    supplier_markup_obj = types.ReplyKeyboardMarkup(row_width=2) # بدون resize_keyboard هنا
-    supplier_markup_obj.add(types.KeyboardButton('المحلات'), types.KeyboardButton('المحفظة'), types.KeyboardButton('الطلبات'), types.KeyboardButton('/start')) 
-    supplier_markup_obj.resize_keyboard = True # تحديد resize_keyboard كخاصية منفصلة
-    return supplier_markup_obj
+    # استخدام متغير مختلف لـ markup هنا لتجنب التضارب
+    supplier_main_markup = types.ReplyKeyboardMarkup(row_width=2)
+    supplier_main_markup.add(types.KeyboardButton('المحلات'), types.KeyboardButton('المحفظة'), types.KeyboardButton('الطلبات'), types.KeyboardButton('/start')) 
+    supplier_main_markup.resize_keyboard = True 
+    return supplier_main_markup
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -252,7 +252,7 @@ def handle_supplier_buttons(message):
                 logging.info(f"المجهز '{supplier_data['name']}' ليس لديه محلات مخصصة.")
                 return
 
-            inline_markup_shops = types.InlineKeyboardMarkup(row_width=1) # متغير جديد للـ InlineMarkup
+            inline_markup_shops = types.InlineKeyboardMarkup(row_width=1)
             for shop in supplier_data['assigned_shops']:
                 inline_markup_shops.add(types.InlineKeyboardButton(text=shop['name'], url=shop['url']))
             
@@ -262,12 +262,10 @@ def handle_supplier_buttons(message):
                 wallet_url = supplier_data['wallet_url']
                 # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
                 # استخدمت متغير جديد ReplyMarkupButton_wallet لضمان عدم التضارب
-                reply_markup_wallet = types.ReplyKeyboardMarkup(
-                    [[types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url))]], 
-                    resize_keyboard=True, 
-                    one_time_keyboard=True
-                )
-                bot.send_message(message.chat.id, "المحفظة الخاصة بك:", reply_markup=reply_markup_wallet)
+                wallet_keyboard_obj = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True, one_time_keyboard=True)
+                wallet_keyboard_obj.add(types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url)))
+                
+                bot.send_message(message.chat.id, "المحفظة الخاصة بك:", reply_markup=wallet_keyboard_obj)
                 logging.info(f"المجهز '{supplier_data['name']}' فتح رابط المحفظة: {wallet_url}")
             else:
                 bot.send_message(message.chat.id, "لم يتم تحديد رابط المحفظة الخاص بك بعد. يرجى التواصل مع المدير.")
@@ -276,12 +274,10 @@ def handle_supplier_buttons(message):
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
                 # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
-                reply_markup_orders = types.ReplyKeyboardMarkup(
-                    [[types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url))]], 
-                    resize_keyboard=True, 
-                    one_time_keyboard=True
-                )
-                bot.send_message(message.chat.id, "الطلبات الخاصة بك:", reply_markup=reply_markup_orders)
+                orders_keyboard_obj = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True, one_time_keyboard=True)
+                orders_keyboard_obj.add(types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url)))
+                
+                bot.send_message(message.chat.id, "الطلبات الخاصة بك:", reply_markup=orders_keyboard_obj)
                 logging.info(f"المجهز '{supplier_data['name']}' أرسل رابط الطلبات: {orders_url}")
             else: 
                 bot.send_message(message.chat.id, "قسم الطلبيات قيد الإنشاء حالياً.") 
