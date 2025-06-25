@@ -1,61 +1,52 @@
-import jsonpickle
 import os
+import json # استخدام مكتبة json العادية
 import logging
 
-DATA_FILE = 'data.json' # الملف راح ينحفظ مباشرة في /app/data.json
+# أسماء المتغيرات البيئية اللي راح نخزن بيها البيانات
+SUPPLIERS_ENV_VAR = 'SUPPLIERS_DATA_JSON'
+SHOPS_ENV_VAR = 'SHOPS_DATA_JSON'
 
+# تهيئة القوائم العالمية في هذا الملف
 suppliers_data = []
 shops_data = []
 
 def load_data():
     global suppliers_data, shops_data 
-    logging.info(f"محاولة تحميل البيانات من {DATA_FILE} (من جذر التطبيق)..")
-    if os.path.exists(DATA_FILE):
-        logging.debug(f"الملف {DATA_FILE} موجود. حجمه: {os.path.getsize(DATA_FILE)} بايت.")
-        try:
-            with open(DATA_FILE, 'r', encoding='utf-8') as f:
-                data_str = f.read()
-                if not data_str.strip():
-                    logging.warning(f"الملف {DATA_FILE} فارغ أو يحتوي على مسافات فقط. تهيئة بيانات فارغة.")
-                    suppliers_data[:] = []
-                    shops_data[:] = []
-                    return
-                
-                jsonpickle.set_preferred_backend('json')
-                jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
-                
-                data = jsonpickle.decode(data_str)
-                suppliers_data[:] = data.get('suppliers', [])
-                shops_data[:] = data.get('shops', [])
-                
-                logging.info(f"تم تحميل البيانات بنجاح من {DATA_FILE}.")
-                logging.debug(f"بيانات المجهزين المحملة: {suppliers_data}")
-                logging.debug(f"بيانات المحلات المحملة: {shops_data}")
+    logging.info(f"محاولة تحميل البيانات من المتغيرات البيئية...")
+    
+    try:
+        # تحميل بيانات المجهزين
+        suppliers_json_str = os.environ.get(SUPPLIERS_ENV_VAR, '[]')
+        suppliers_data_loaded = json.loads(suppliers_json_str)
+        suppliers_data.extend(suppliers_data_loaded) # استخدام extend لملء القائمة العالمية
 
-        except jsonpickle.json.JSONDecodeError as jde:
-            logging.error(f"خطأ في فك تشفير JSON عند تحميل البيانات من {DATA_FILE}: {jde}. الملف قد يكون تالفاً.", exc_info=True)
-            suppliers_data[:] = []
-            shops_data[:] = []
-        except Exception as e:
-            logging.error(f"صار خطأ عام بتحميل البيانات من {DATA_FILE}: {e}", exc_info=True)
-            suppliers_data[:] = []
-            shops_data[:] = []
-    else:
-        logging.info(f"الملف {DATA_FILE} ما موجود. تهيئة بيانات فارغة.")
-        suppliers_data[:] = []
-        shops_data[:] = []
+        # تحميل بيانات المحلات
+        shops_json_str = os.environ.get(SHOPS_ENV_VAR, '[]')
+        shops_data_loaded = json.loads(shops_json_str)
+        shops_data.extend(shops_data_loaded) # استخدام extend لملء القائمة العالمية
+        
+        logging.info(f"تم تحميل البيانات بنجاح من المتغيرات البيئية.")
+        logging.debug(f"بيانات المجهزين المحملة: {suppliers_data}")
+        logging.debug(f"بيانات المحلات المحملة: {shops_data}")
+
+    except json.JSONDecodeError as jde:
+        logging.error(f"خطأ في فك تشفير JSON عند تحميل البيانات من المتغيرات البيئية: {jde}. البيانات قد تكون تالفة.", exc_info=True)
+        suppliers_data.clear() # مسح القوائم في حالة وجود خطأ
+        shops_data.clear()
+    except Exception as e:
+        logging.error(f"صار خطأ عام بتحميل البيانات من المتغيرات البيئية: {e}", exc_info=True)
+        suppliers_data.clear()
+        shops_data.clear()
 
 def save_data():
-    data = {
-        'suppliers': suppliers_data,
-        'shops': shops_data
-    }
+    logging.info(f"محاولة حفظ البيانات في المتغيرات البيئية...")
     try:
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            jsonpickle.set_preferred_backend('json')
-            jsonpickle.set_encoder_options('json', indent=4, sort_keys=True, ensure_ascii=False)
-            f.write(jsonpickle.encode(data))
-            logging.info(f"تم حفظ البيانات بنجاح في {DATA_FILE}.")
-            logging.debug(f"حجم ملف {DATA_FILE} بعد الحفظ: {os.path.getsize(DATA_FILE)} بايت.")
+        # حفظ بيانات المجهزين
+        os.environ[SUPPLIERS_ENV_VAR] = json.dumps(suppliers_data, ensure_ascii=False)
+        
+        # حفظ بيانات المحلات
+        os.environ[SHOPS_ENV_VAR] = json.dumps(shops_data, ensure_ascii=False)
+        
+        logging.info(f"تم حفظ البيانات بنجاح في المتغيرات البيئية.")
     except Exception as e:
-        logging.error(f"صار خطأ بحفظ البيانات في {DATA_FILE}: {e}", exc_info=True)
+        logging.error(f"صار خطأ بحفظ البيانات في المتغيرات البيئية: {e}", exc_info=True)
