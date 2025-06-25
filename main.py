@@ -4,17 +4,12 @@ import logging
 import os 
 import time 
 
-# ==============================================================================
-# إعدادات تسجيل الأخطاء (Logging)
-# ==============================================================================
 logging.basicConfig(
     level=logging.DEBUG, 
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()] 
 )
-# ==============================================================================
 
-# توكن البوت والـ ID مال المدير
 BOT_TOKEN = os.environ.get('BOT_TOKEN', '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', '7032076289'))
 
@@ -32,10 +27,9 @@ from modules import supplier_handlers
 from modules import shop_handlers
 from modules import driver_handlers 
 
-# تم تعديل هذا الجزء ليستخدم دالة load_data() و save_data() الجديدة في data_manager
 try:
     data_manager.load_data() 
-    logging.info("تم تحميل البيانات من المتغيرات البيئية عند بدء تشغيل البوت.")
+    logging.info("تم بدء تشغيل البوت وتحميل البيانات من main.py.")
 except Exception as e:
     logging.exception("خطأ حرج عند تحميل البيانات عند بدء تشغيل البوت. البوت لن يعمل.")
     exit(1) 
