@@ -4,17 +4,12 @@ import logging
 import os 
 import time 
 
-# ==============================================================================
-# إعدادات تسجيل الأخطاء (Logging)
-# ==============================================================================
 logging.basicConfig(
     level=logging.DEBUG, 
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()] 
 )
-# ==============================================================================
 
-# توكن البوت والـ ID مال المدير
 BOT_TOKEN = os.environ.get('BOT_TOKEN', '7773688435:AAHHWMc5VDYqMAYKIkU0SyCopeNBXgqJfbQ')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', '7032076289'))
 
