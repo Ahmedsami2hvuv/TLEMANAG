@@ -25,7 +25,6 @@ def get_shops_list_str():
         list_str += f"{i+1}. الاسم: {s['name']}, الرابط: {s['url']}\n"
     return list_str
 
-# --- تسلسل إضافة محل جديد ---
 def handle_add_shop_start(bot, message, user_states):
     bot.send_message(message.chat.id, "لطفاً، ادخل اسم المحل:")
     user_states[message.chat.id] = {'state': 'awaiting_shop_name_for_new', 'data': {}} 
@@ -62,7 +61,6 @@ def get_new_shop_url(bot, message, user_states, get_admin_markup_func):
     bot.send_message(message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
     logging.debug(f"DEBUG: Exiting get_new_shop_url. State reset for chat ID: {message.chat.id}")
 
-# --- تسلسل تعديل محل ---
 def handle_edit_shop_start(bot, message, user_states):
     if not data_manager.shops_data:
         bot.send_message(message.chat.id, "لا يوجد محلات للتعديل. يرجى إضافة محل أولاً.")
@@ -87,11 +85,10 @@ def select_shop_to_edit_callback(bot, call, user_states, get_admin_markup_func):
             'state': 'awaiting_shop_edit_field_selection', # حالة جديدة
             'shop_index': shop_index
         }
-        # عرض خيارات التعديل
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(types.InlineKeyboardButton(text="تعديل الاسم", callback_data="edit_shop_field_name"))
         markup.add(types.InlineKeyboardButton(text="تعديل الرابط", callback_data="edit_shop_field_url"))
-        markup.add(types.InlineKeyboardButton(text="العودة", callback_data="cancel_shop_edit")) # زر للإلغاء
+        markup.add(types.InlineKeyboardButton(text="العودة", callback_data="cancel_shop_edit")) 
         bot.send_message(call.message.chat.id, 
                          f"ماذا تريد أن تعدل في المحل {selected_shop['name']}؟",
                          reply_markup=markup)
@@ -106,7 +103,6 @@ def handle_shop_edit_field_selection(bot, call, user_states, get_admin_markup_fu
 
     user_chat_id = call.message.chat.id
     current_state = user_states.get(user_chat_id, {})
-    # التأكد من أن الحالة هي اختيار الحقل المراد تعديله
     if current_state.get('state') != 'awaiting_shop_edit_field_selection':
         bot.send_message(user_chat_id, "يرجى اختيار المحل أولاً.", reply_markup=get_admin_markup_func())
         user_states[user_chat_id] = {'state': 'admin_main_menu'}
@@ -116,10 +112,9 @@ def handle_shop_edit_field_selection(bot, call, user_states, get_admin_markup_fu
     selected_field = call.data.replace('edit_shop_field_', '')
     selected_shop = data_manager.shops_data[shop_index]
 
-    # حالة جديدة لانتظار القيمة الجديدة للحقل المحدد
     user_states[user_chat_id]['state'] = f'awaiting_shop_new_value_{selected_field}_for_edit' 
     user_states[user_chat_id]['field_to_edit'] = selected_field 
-    user_states[user_chat_id]['shop_index'] = shop_index # تأكيد حفظ الفهرس
+    user_states[user_chat_id]['shop_index'] = shop_index 
     
     prompt = ""
     if selected_field == 'name':
@@ -184,7 +179,6 @@ def cancel_shop_edit_callback(bot, call, user_states, get_admin_markup_func):
     else:
         bot.send_message(call.message.chat.id, "انت لست مدير النظام.")
 
-# --- تسلسل مسح محل (لا تغيير) ---
 def handle_delete_shop_start(bot, message, user_states):
     if not data_manager.shops_data:
         bot.send_message(message.chat.id, "لا يوجد محلات للمسح.")
