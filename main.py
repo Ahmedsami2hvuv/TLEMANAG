@@ -43,14 +43,12 @@ supplier_handlers.set_admin_id(ADMIN_ID)
 shop_handlers.set_admin_id(ADMIN_ID)
 
 def get_admin_markup():
-    # استخدام متغير مختلف لـ markup هنا لتجنب التضارب
     admin_main_markup = types.ReplyKeyboardMarkup(row_width=2) 
     admin_main_markup.add(types.KeyboardButton('المجهزين'), types.KeyboardButton('المحلات'), types.KeyboardButton('الطلبيات'), types.KeyboardButton('/start')) 
     admin_main_markup.resize_keyboard = True 
     return admin_main_markup
 
 def get_supplier_markup():
-    # استخدام متغير مختلف لـ markup هنا لتجنب التضارب
     supplier_main_markup = types.ReplyKeyboardMarkup(row_width=2)
     supplier_main_markup.add(types.KeyboardButton('المحلات'), types.KeyboardButton('المحفظة'), types.KeyboardButton('الطلبات'), types.KeyboardButton('/start')) 
     supplier_main_markup.resize_keyboard = True 
@@ -260,8 +258,7 @@ def handle_supplier_buttons(message):
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
                 wallet_url = supplier_data['wallet_url']
-                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
-                # استخدمت متغير جديد ReplyMarkupButton_wallet لضمان عدم التضارب
+                # هنا الخطأ السابق كان. تم تعديل طريقة إنشاء ReplyKeyboardMarkup
                 wallet_keyboard_obj = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True, one_time_keyboard=True)
                 wallet_keyboard_obj.add(types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url)))
                 
@@ -273,7 +270,7 @@ def handle_supplier_buttons(message):
         elif message.text == 'الطلبات':
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
-                # تصحيح الخطأ: هنا كان الخطأ. لا تستخدم 'keyboard='، بل مرر القائمة مباشرة
+                # هنا الخطأ السابق كان. تم تعديل طريقة إنشاء ReplyKeyboardMarkup
                 orders_keyboard_obj = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True, one_time_keyboard=True)
                 orders_keyboard_obj.add(types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url)))
                 
