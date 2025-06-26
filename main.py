@@ -253,7 +253,6 @@ def handle_supplier_buttons(message):
         elif message.text == 'المحفظة':
             if supplier_data.get('wallet_url'):
                 wallet_url = supplier_data['wallet_url']
-                # هنا الخطأ السابق كان. تم تعديل طريقة إنشاء ReplyKeyboardMarkup
                 wallet_keyboard_obj = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True, one_time_keyboard=True)
                 wallet_keyboard_obj.add(types.KeyboardButton(text="فتح المحفظة", web_app=types.WebAppInfo(url=wallet_url)))
                 
@@ -265,7 +264,6 @@ def handle_supplier_buttons(message):
         elif message.text == 'الطلبات':
             if supplier_data.get('orders_url'): 
                 orders_url = supplier_data['orders_url']
-                # هنا الخطأ السابق كان. تم تعديل طريقة إنشاء ReplyKeyboardMarkup
                 orders_keyboard_obj = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True, one_time_keyboard=True)
                 orders_keyboard_obj.add(types.KeyboardButton(text="عرض الطلبات", web_app=types.WebAppInfo(url=orders_url)))
                 
