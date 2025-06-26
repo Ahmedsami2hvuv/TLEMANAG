@@ -309,4 +309,43 @@ def select_supplier_for_shops_callback(bot, call, user_states, get_admin_markup_
                 selected_shop = data_manager.shops_data[shop_index]
                 
                 if selected_shop not in selected_supplier['assigned_shops']:
-                    selected_supplier['assigned_shops'].append
+                    selected_supplier['assigned_shops'].append(selected_shop)
+                    data_manager.save_data() 
+                    logging.info(f"تم تخصيص محل '{selected_shop['name']}' للمجهز '{selected_supplier['name']}' بواسطة المدير (ID: {call.from_user.id}).")
+                    bot.send_message(call.message.chat.id, f"تم تخصيص محل '{selected_shop['name']}' للمجهز '{selected_supplier['name']}'.")
+                else:
+                    logging.info(f"محل '{selected_shop['name']}' مخصص أصلاً لهذا المجهز (المدير ID: {call.from_user.id}).")
+                    bot.send_message(call.message.chat.id, f"محل '{selected_shop['name']}' مخصص أصلاً لهذا المجهز.")
+                
+                markup = types.InlineKeyboardMarkup(row_width=1)
+                available_shops = [shop for shop in data_manager.shops_data if shop not in selected_supplier['assigned_shops']]
+
+                if not available_shops:
+                    logging.info(f"لا توجد محلات إضافية متاحة للتخصيص للمجهز {selected_supplier['name']}.")
+                    bot.send_message(call.message.chat.id, "لا توجد محلات إضافية متاحة للتخصيص لهذا المجهز.", reply_markup=get_admin_markup_func())
+                    user_states[user_chat_id] = {'state': 'admin_main_menu'}
+                    return
+
+                for i, shop in enumerate(available_shops):
+                    markup.add(types.InlineKeyboardButton(text=f"{shop['name']}", callback_data=f"assign_shop_{data_manager.shops_data.index(shop)}"))
+                
+                markup.add(types.InlineKeyboardButton(text="إنهاء التخصيص والرجوع", callback_data="finish_assigning_shops"))
+                bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
+            else:
+                logging.error(f"صار خطأ في تخصيص المحل (فهرس مجهز/محل غير صالح) للمدير (ID: {call.from_user.id}). فهرس المجهز: {supplier_index}, فهرس المحل: {shop_index}", exc_info=True)
+                bot.send_message(call.message.chat.id, "حدث خطأ في تحديد المجهز أو المحل.", reply_markup=get_admin_markup_func())
+                user_states[user_chat_id] = {'state': 'admin_main_menu'}
+            
+        else: 
+            logging.warning(f"المدير (ID: {call.from_user.id}) حاول تخصيص محل دون اختيار مجهز أولاً.")
+            bot.send_message(call.message.chat.id, "يرجى اختيار المجهز أولاً لتخصيص المحلات.", reply_markup=get_admin_markup_func())
+            user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
+
+    def finish_assigning_callback(bot, call, user_states, get_admin_markup_func):
+        bot.answer_callback_query(call.id, text="تم إنهاء التخصيص.")
+        logging.info(f"المدير (ID: {call.from_user.id}) أنهى تخصيص المحلات.")
+        if call.from_user.id == ADMIN_ID:
+            user_states[call.message.chat.id] = {'state': 'admin_main_menu'}
+            bot.send_message(call.message.chat.id, "اختر من لوحة التحكم:", reply_markup=get_admin_markup_func())
+        else:
+            bot.send_message(call.message.chat.id, "انت لست مدير النظام.")
